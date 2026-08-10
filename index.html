@@ -14,7 +14,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
         body { font-family: 'Tajawal', sans-serif; background-color: #f0f4f8; }
-        #map { height: 300px; width: 100%; border-radius: 0.5rem; }
+        #map { height: 300px; width: 100%; border-radius: 0.5rem; z-index: 1; }
     </style>
 </head>
 <body class="text-gray-800 pb-12">
@@ -90,7 +90,7 @@
                     </div>
                 </div>
                 <div class="bg-white p-2 rounded border">
-                    <p class="text-xs font-bold text-gray-600 mb-2">📍 الخريطة الجغرافية:</p>
+                    <p class="text-xs font-bold text-gray-600 mb-2">📍 الخريطة الجغرافية (نطاق العطل):</p>
                     <div id="map"></div>
                 </div>
             </div>
@@ -134,9 +134,27 @@
             const data = snapshot.val();
             if (data) {
                 Object.entries(data).reverse().forEach(([key, report]) => {
+                    const status = report.workStatus || 'جديد';
+                    
+                    // تحديد لون الحالة
+                    let statusColor = 'bg-red-500';
+                    if(status === 'جاري التدخل') statusColor = 'bg-yellow-500';
+                    if(status === 'تم الإصلاح') statusColor = 'bg-green-500';
+
                     const card = document.createElement('div');
-                    card.className = "bg-white border p-4 rounded shadow-sm text-sm";
-                    card.innerHTML = `<div class="font-bold text-gray-800">${report.classification}</div><div class="text-xs text-gray-500">📍 ${report.estimatedDistance} كم</div><div class="mt-2 flex gap-1"><button onclick="updateWorkOrderStatus('${key}', 'جديد')" class="text-[10px] px-2 py-1 bg-red-100 rounded">🔴 جديد</button><button onclick="updateWorkOrderStatus('${key}', 'جاري التدخل')" class="text-[10px] px-2 py-1 bg-yellow-100 rounded">🟡 جاري</button><button onclick="updateWorkOrderStatus('${key}', 'تم الإصلاح')" class="text-[10px] px-2 py-1 bg-green-100 rounded">🟢 تم</button></div>`;
+                    card.className = "bg-white border p-4 rounded shadow-sm flex justify-between items-center";
+                    card.innerHTML = `
+                        <div>
+                            <div class="font-bold text-gray-800">${report.classification}</div>
+                            <div class="text-xs text-gray-500 mb-2">📍 ${report.estimatedDistance} كم</div>
+                            <span class="${statusColor} text-white px-2 py-1 rounded text-[10px] font-bold shadow">${status}</span>
+                        </div>
+                        <div class="flex flex-col md:flex-row gap-1">
+                            <button onclick="updateWorkOrderStatus('${key}', 'جديد')" class="text-[10px] px-3 py-2 bg-red-50 hover:bg-red-100 rounded border border-red-200 text-red-700 font-bold transition">🔴 جديد</button>
+                            <button onclick="updateWorkOrderStatus('${key}', 'جاري التدخل')" class="text-[10px] px-3 py-2 bg-yellow-50 hover:bg-yellow-100 rounded border border-yellow-200 text-yellow-700 font-bold transition">🟡 جاري</button>
+                            <button onclick="updateWorkOrderStatus('${key}', 'تم الإصلاح')" class="text-[10px] px-3 py-2 bg-green-50 hover:bg-green-100 rounded border border-green-200 text-green-700 font-bold transition">🟢 تم الإصلاح</button>
+                        </div>
+                    `;
                     container.appendChild(card);
                 });
             }
@@ -145,7 +163,9 @@
 
     <script>
         let reportDataStore = {};
-        let map, marker, circle;
+        let map = null;
+        let mapCircle = null;
+        let mapMarker = null;
 
         function updateAttenuationDefault() {
             const wl = document.getElementById('wavelength').value;
@@ -164,6 +184,32 @@
             document.getElementById('faultClassification').textContent = (rx <= -30 ? "انقطاع كلي" : (rx <= -26 ? "توهين عالي" : "طبيعي"));
             document.getElementById('faultDistance').innerHTML = `المسافة التقديرية: <b>${distance.toFixed(2)} كم</b>`;
             
+            // إظهار الخريطة (مركزة على تندوف كمركز افتراضي للعمليات)
+            setTimeout(() => {
+                if (!map) {
+                    map = L.map('map').setView([27.6711, -8.1478], 10);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
+                }
+                map.invalidateSize(); // إصلاح مشكلة عدم ظهور الخريطة
+
+                if(mapCircle) map.removeLayer(mapCircle);
+                if(mapMarker) map.removeLayer(mapMarker);
+
+                mapMarker = L.marker([27.6711, -8.1478]).addTo(map).bindPopup("<b>المركز الرئيسي للاتصالات</b><br>نقطة انطلاق القياس").openPopup();
+                
+                if(distance > 0) {
+                    mapCircle = L.circle([27.6711, -8.1478], {
+                        color: 'red',
+                        fillColor: '#f03',
+                        fillOpacity: 0.2,
+                        radius: distance * 1000 // تحويل الكيلومتر إلى متر للخريطة
+                    }).addTo(map);
+                    map.fitBounds(mapCircle.getBounds());
+                }
+            }, 300);
+
             reportDataStore = { classification: document.getElementById('faultClassification').textContent, estimatedDistance: distance.toFixed(2), workStatus: "جديد" };
             window.sendReportToFirebase(reportDataStore);
         }
@@ -172,8 +218,9 @@
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             doc.text("AT-OptiSmart Diagnostic Report", 20, 20);
-            doc.text(`Status: ${reportDataStore.classification}`, 20, 30);
-            doc.save("Report.pdf");
+            doc.text(`Fault Type: ${reportDataStore.classification}`, 20, 30);
+            doc.text(`Estimated Distance: ${reportDataStore.estimatedDistance} KM`, 20, 40);
+            doc.save("AT-OptiSmart_Report.pdf");
         }
     </script>
 </body>
