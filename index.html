@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AT-OptiSmart - Algérie Télécom FTTH Advanced Platform</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
+        body { font-family: 'Tajawal', sans-serif; background-color: #f0f4f8; }
+        #map { height: 300px; width: 100%; border-radius: 0.5rem; }
+    </style>
+</head>
+<body class="text-gray-800 pb-12">
+
+    <div class="max-w-4xl mx-auto mt-6 bg-white p-6 md:p-8 rounded-xl shadow-2xl border-t-4 border-blue-600">
+        <!-- الهيدر -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-700">AT-OptiSmart Pro</h1>
+                <p class="text-gray-500 text-sm">منصة التشخيص الذكي وإدارة صيانة شبكات (FTTH/GPON)</p>
+            </div>
+            <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full mt-2 md:mt-0">Algérie Télécom Edition</span>
+        </div>
+        
+        <!-- مدخلات القياس المعيارية -->
+        <div class="bg-blue-50 p-5 rounded-lg mb-6 shadow-inner">
+            <h2 class="text-lg font-bold mb-4 text-blue-800 flex items-center gap-2">⚡ معلمات الإشارة والفيزياء الضوئية</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block mb-1 text-sm font-medium">الطول الموجي (λ):</label>
+                    <select id="wavelength" onchange="updateAttenuationDefault()" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300 bg-white">
+                        <option value="1310">1310 nm (Upstream)</option>
+                        <option value="1490" selected>1490 nm (Downstream)</option>
+                        <option value="1550">1550 nm (OTDR)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm font-medium">القدرة المرسلة (Tx) dBm:</label>
+                    <input type="number" id="txPower" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300" value="3">
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm font-medium">القدرة المستقبلة (Rx) dBm:</label>
+                    <input type="number" id="rxPower" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300" placeholder="-28">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block mb-1 text-sm font-medium">نوع المقسم (Splitter):</label>
+                    <select id="splitter" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300 bg-white">
+                        <option value="0">بدون مقسم</option>
+                        <option value="10.5">1:8</option>
+                        <option value="13.5" selected>1:16</option>
+                        <option value="17.0">1:32</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm font-medium">عدد الموصلات/اللحامات:</label>
+                    <input type="number" id="connectors" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300" value="2">
+                </div>
+                <div>
+                    <label class="block mb-1 text-sm font-medium">معامل التوهين (α dB/km):</label>
+                    <input type="number" id="attenuation" step="0.01" class="w-full p-2.5 border rounded focus:ring focus:ring-blue-300" value="0.25">
+                </div>
+            </div>
+
+            <button onclick="runAsmaaAlgorithm()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md">
+                🚀 تحليل ذكي وتحديد الموقع الجغرافي (خوارزمية ASMAA)
+            </button>
+        </div>
+
+        <!-- قسم النتائج -->
+        <div id="resultSection" class="hidden bg-green-50 p-5 rounded-lg border border-green-200 shadow-inner mb-6">
+            <h2 class="text-lg font-bold mb-3 text-green-800">✅ نتيجة التشخيص الميداني</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div class="bg-white p-4 rounded border">
+                    <p id="diagnosisStatus" class="font-bold mb-2"></p>
+                    <p id="faultClassification" class="text-sm font-bold mb-2 text-gray-800"></p>
+                    <p id="faultDistance" class="text-gray-700 font-medium"></p>
+                    <div class="mt-4 flex gap-2">
+                        <button onclick="generatePDFReport()" class="w-full bg-gray-800 text-white text-sm font-bold py-2 rounded hover:bg-gray-900 transition">📄 تصدير تقرير PDF</button>
+                    </div>
+                </div>
+                <div class="bg-white p-2 rounded border">
+                    <p class="text-xs font-bold text-gray-600 mb-2">📍 الخريطة الجغرافية:</p>
+                    <div id="map"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- لوحة التحكم -->
+        <div class="mt-8 border-t pt-6">
+            <h2 class="text-xl font-bold mb-4 text-gray-700">📂 لوحة متابعة أوامر الصيانة (GMAO)</h2>
+            <div id="reportsList" class="space-y-3">
+                <p class="text-gray-400 text-sm text-center py-4">جاري تحميل البيانات...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (Version 10.12.0) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, update } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCDYxvfYYDRBbqMj4zzMj05GdGk5n4VCmY",
+            authDomain: "at-optismart.firebaseapp.com",
+            databaseURL: "https://at-optismart-default-rtdb.firebaseio.com",
+            projectId: "at-optismart"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        
+        window.sendReportToFirebase = (reportData) => {
+            push(ref(database, 'fault_reports'), reportData);
+        };
+
+        window.updateWorkOrderStatus = (reportId, newStatus) => {
+            update(ref(database, 'fault_reports/' + reportId), { workStatus: newStatus });
+        };
+
+        onValue(ref(database, 'fault_reports'), (snapshot) => {
+            const container = document.getElementById('reportsList');
+            container.innerHTML = '';
+            const data = snapshot.val();
+            if (data) {
+                Object.entries(data).reverse().forEach(([key, report]) => {
+                    const card = document.createElement('div');
+                    card.className = "bg-white border p-4 rounded shadow-sm text-sm";
+                    card.innerHTML = `<div class="font-bold text-gray-800">${report.classification}</div><div class="text-xs text-gray-500">📍 ${report.estimatedDistance} كم</div><div class="mt-2 flex gap-1"><button onclick="updateWorkOrderStatus('${key}', 'جديد')" class="text-[10px] px-2 py-1 bg-red-100 rounded">🔴 جديد</button><button onclick="updateWorkOrderStatus('${key}', 'جاري التدخل')" class="text-[10px] px-2 py-1 bg-yellow-100 rounded">🟡 جاري</button><button onclick="updateWorkOrderStatus('${key}', 'تم الإصلاح')" class="text-[10px] px-2 py-1 bg-green-100 rounded">🟢 تم</button></div>`;
+                    container.appendChild(card);
+                });
+            }
+        });
+    </script>
+
+    <script>
+        let reportDataStore = {};
+        let map, marker, circle;
+
+        function updateAttenuationDefault() {
+            const wl = document.getElementById('wavelength').value;
+            document.getElementById('attenuation').value = (wl === '1310' ? '0.35' : (wl === '1490' ? '0.25' : '0.20'));
+        }
+
+        function runAsmaaAlgorithm() {
+            const tx = parseFloat(document.getElementById('txPower').value);
+            const rx = parseFloat(document.getElementById('rxPower').value);
+            const att = parseFloat(document.getElementById('attenuation').value);
+            const loss = tx - rx - parseFloat(document.getElementById('splitter').value) - (parseFloat(document.getElementById('connectors').value) * 0.5);
+            const distance = loss > 0 ? (loss / att) : 0;
+
+            document.getElementById('resultSection').classList.remove('hidden');
+            document.getElementById('diagnosisStatus').textContent = (rx <= -30 ? "عطل حرج" : (rx <= -26 ? "تحذير" : "سليم"));
+            document.getElementById('faultClassification').textContent = (rx <= -30 ? "انقطاع كلي" : (rx <= -26 ? "توهين عالي" : "طبيعي"));
+            document.getElementById('faultDistance').innerHTML = `المسافة التقديرية: <b>${distance.toFixed(2)} كم</b>`;
+            
+            reportDataStore = { classification: document.getElementById('faultClassification').textContent, estimatedDistance: distance.toFixed(2), workStatus: "جديد" };
+            window.sendReportToFirebase(reportDataStore);
+        }
+
+        function generatePDFReport() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.text("AT-OptiSmart Diagnostic Report", 20, 20);
+            doc.text(`Status: ${reportDataStore.classification}`, 20, 30);
+            doc.save("Report.pdf");
+        }
+    </script>
+</body>
+</html>
