@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AT-OptiSmart Pro V2 - FTTH/GPON Diagnostic & Decision Support Platform</title>
+    <title>AT-GeoFiber Pro - FTTH/GPON Diagnostic & Decision Support Platform</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -80,7 +80,7 @@
     <!-- Authentication Section -->
     <div id="authSection" class="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-xl border-t-4 border-blue-600 mx-4 md:mx-auto">
         <div class="text-center mb-6">
-            <h1 class="text-2xl font-black text-blue-700 tracking-tight">AT-OptiSmart Pro V2</h1>
+            <h1 class="text-2xl font-black text-blue-700 tracking-tight">AT-GeoFiber Pro</h1>
             <p class="text-xs text-slate-500 font-semibold mt-1" data-i18n="login_subtitle">بوابة التشخيص الميداني والدعم الهندسي لشبكات FTTH/GPON</p>
         </div>
         
@@ -113,7 +113,7 @@
         <header class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <div class="flex items-center gap-3">
-                    <h1 class="text-2xl md:text-3xl font-black text-blue-700">AT-OptiSmart Pro <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">V2.4</span></h1>
+                    <h1 class="text-2xl md:text-3xl font-black text-blue-700">AT-GeoFiber Pro <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">V2.4</span></h1>
                 </div>
                 <p class="text-slate-500 text-xs md:text-sm mt-0.5" data-i18n="app_desc">نظام التشخيص الهندسي المتقدم وتحليل ميزانية القدرة وتحديد أعطال الألياف البصرية</p>
             </div>
@@ -1844,7 +1844,7 @@
 
                 doc.setFontSize(11);
                 doc.setTextColor(71, 85, 105);
-                doc.text("Direction Technique - Plateforme AT-OptiSmart Pro V2", 15, 26);
+                doc.text("Direction Technique - Plateforme AT-GeoFiber Pro", 15, 26);
                 doc.text("RAPPORT OFFICIEL D'EXPERTISE TECHNIQUE FTTH/GPON", 15, 32);
 
                 doc.setDrawColor(203, 213, 225);
@@ -1940,7 +1940,7 @@
                 // Footer
                 doc.setFontSize(8);
                 doc.setTextColor(148, 163, 184);
-                doc.text("Document généré automatiquement par la plateforme AT-OptiSmart Pro V2 - Algérie Télécom", 15, 287);
+                doc.text("Document généré automatiquement par la plateforme AT-GeoFiber Pro - Algérie Télécom", 15, 287);
 
                 doc.save(`AT_Expertise_FTTH_${Date.now()}.pdf`);
                 showToast("تم تصدير تقرير PDF بنجاح", "success");
