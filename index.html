@@ -3,195 +3,536 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AT-OptiSmart Pro V3 - FTTH/GPON Diagnostic Platform</title>
+    <title>AT-OptiSmart Pro V2 - FTTH/GPON Diagnostic & Decision Support Platform</title>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
     <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap');
-        body { font-family: 'Tajawal', sans-serif; background-color: #f0f4f8; transition: all 0.3s ease; }
-        #map { height: 350px; width: 100%; border-radius: 0.5rem; z-index: 1; }
-        .input-group label { @apply block mb-1 text-sm font-medium text-gray-700; }
-        .input-group input, .input-group select { @apply w-full p-2.5 md:p-2 border rounded focus:ring focus:ring-blue-300 bg-white text-sm; }
-        .btn-large { @apply py-3 md:py-2 text-lg md:text-base; }
-        [dir="rtl"] .input-group label, [dir="rtl"] .input-group input, [dir="rtl"] .input-group select { text-align: right; }
-        [dir="ltr"] .input-group label, [dir="ltr"] .input-group input, [dir="ltr"] .input-group select { text-align: left; }
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
+        body { 
+            font-family: 'Tajawal', sans-serif; 
+            background-color: #f1f5f9; 
+            transition: all 0.3s ease; 
+        }
+        #map { 
+            height: 380px; 
+            width: 100%; 
+            border-radius: 0.5rem; 
+            z-index: 1; 
+        }
+        .input-group label { 
+            display: block; 
+            margin-bottom: 0.25rem; 
+            font-size: 0.85rem; 
+            font-weight: 600; 
+            color: #334155; 
+        }
+        .input-group input, .input-group select, .input-group textarea { 
+            width: 100%; 
+            padding: 0.55rem 0.75rem; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 0.375rem; 
+            background-color: #ffffff; 
+            font-size: 0.875rem; 
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+        }
+        [dir="rtl"] .input-group label, [dir="rtl"] .input-group input, [dir="rtl"] .input-group select, [dir="rtl"] .input-group textarea { 
+            text-align: right; 
+        }
+        [dir="ltr"] .input-group label, [dir="ltr"] .input-group input, [dir="ltr"] .input-group select, [dir="ltr"] .input-group textarea { 
+            text-align: left; 
+        }
+        .toast {
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
     </style>
 </head>
-<body class="text-gray-800 pb-12">
+<body class="text-slate-800 pb-12">
 
-    <!-- واجهة تسجيل الدخول -->
-    <div id="authSection" class="max-w-md mx-auto mt-20 bg-white p-8 rounded-xl shadow-2xl border-t-4 border-blue-600">
-        <h2 class="text-2xl font-bold text-center text-blue-700 mb-6" data-i18n="login_title">تسجيل الدخول - اتصالات الجزائر</h2>
-        <div class="input-group mb-4">
-            <label data-i18n="email">البريد الإلكتروني</label>
-            <input type="email" id="authEmail" placeholder="tech@algerietelecom.dz">
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-4 left-4 right-4 md:left-auto md:right-4 z-50 flex flex-col gap-2 max-w-md pointer-events-none"></div>
+
+    <!-- Global Loading Overlay -->
+    <div id="globalLoading" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-xl shadow-2xl flex flex-col items-center gap-3">
+            <div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-600 border-t-transparent"></div>
+            <p id="loadingText" class="text-sm font-bold text-slate-700">جاري المعالجة...</p>
         </div>
-        <div class="input-group mb-6">
-            <label data-i18n="password">كلمة المرور</label>
-            <input type="password" id="authPassword">
-        </div>
-        <button onclick="loginUser()" class="w-full bg-blue-600 text-white font-bold py-2 rounded hover:bg-blue-700" data-i18n="login_btn">دخول</button>
-        <p id="authError" class="text-red-500 text-sm mt-3 text-center hidden"></p>
     </div>
 
-    <!-- التطبيق الرئيسي -->
-    <div id="appSection" class="hidden max-w-5xl mx-auto mt-6 bg-white p-4 md:p-8 rounded-xl shadow-2xl border-t-4 border-blue-600">
-        <!-- Header & Language Toggle -->
-        <div class="flex flex-col md:flex-row justify-between items-center mb-6 border-b pb-4 gap-4">
-            <div>
-                <h1 class="text-2xl md:text-3xl font-bold text-blue-700">AT-OptiSmart Pro V3</h1>
-                <p class="text-gray-500 text-xs md:text-sm" data-i18n="app_desc">منصة دعم قرار التشخيص والصيانة لشبكات FTTH/GPON</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <button onclick="toggleLanguage()" id="langBtn" class="bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm font-bold">FR</button>
-                <span class="bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full shadow-sm" id="userRoleBadge">Technician</span>
-                <button onclick="logoutUser()" class="bg-red-500 text-white text-xs px-3 py-1 rounded font-bold" data-i18n="logout">خروج</button>
-            </div>
+    <!-- Authentication Section -->
+    <div id="authSection" class="max-w-md mx-auto mt-16 p-6 bg-white rounded-2xl shadow-xl border-t-4 border-blue-600 mx-4 md:mx-auto">
+        <div class="text-center mb-6">
+            <h1 class="text-2xl font-black text-blue-700 tracking-tight">AT-OptiSmart Pro V2</h1>
+            <p class="text-xs text-slate-500 font-semibold mt-1" data-i18n="login_subtitle">بوابة التشخيص الميداني والدعم الهندسي لشبكات FTTH/GPON</p>
         </div>
-
-        <!-- إعدادات الموقع والتقرير + ONT Sensitivity Threshold -->
-        <div class="bg-gray-50 p-4 rounded-lg mb-6 shadow-sm border border-gray-200">
-            <div class="flex justify-between items-center mb-4 border-b-2 border-gray-200 pb-2">
-                <h2 class="text-lg font-bold text-gray-800" data-i18n="site_config">إعدادات الموقع والتقرير</h2>
-                <button onclick="applyStandardScenario()" class="bg-green-600 text-white text-xs px-3 py-1 rounded font-bold hover:bg-green-700" data-i18n="standard_scenario">سيناريو FTTH نموذجي</button>
+        
+        <div class="space-y-4">
+            <div class="input-group">
+                <label data-i18n="email">البريد الإلكتروني المهني</label>
+                <input type="email" id="authEmail" placeholder="technicien@algerietelecom.dz" autocomplete="username">
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div class="input-group">
+                <label data-i18n="password">كلمة المرور</label>
+                <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            
+            <button onclick="loginUser()" id="btnLogin" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-2.5 rounded-lg transition duration-200 shadow-md text-sm flex justify-center items-center gap-2">
+                <span data-i18n="login_btn">تسجيل الدخول</span>
+            </button>
+            
+            <p id="authError" class="text-red-600 text-xs font-semibold text-center hidden bg-red-50 p-2 rounded border border-red-200"></p>
+        </div>
+        
+        <div class="mt-6 pt-4 border-t border-slate-100 text-center">
+            <span class="text-[11px] text-slate-400">Algérie Télécom • Version 2.4 Enterprise Edition</span>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Section -->
+    <div id="appSection" class="hidden max-w-6xl mx-auto mt-4 px-3 md:px-6">
+        
+        <!-- Header -->
+        <header class="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <div class="flex items-center gap-3">
+                    <h1 class="text-2xl md:text-3xl font-black text-blue-700">AT-OptiSmart Pro <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">V2.4</span></h1>
+                </div>
+                <p class="text-slate-500 text-xs md:text-sm mt-0.5" data-i18n="app_desc">نظام التشخيص الهندسي المتقدم وتحليل ميزانية القدرة وتحديد أعطال الألياف البصرية</p>
+            </div>
+            <div class="flex items-center flex-wrap gap-2 md:gap-3">
+                <button onclick="toggleLanguage()" id="langBtn" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold transition">FR</button>
+                <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1 rounded-lg">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span class="text-xs font-bold text-slate-700" id="userNameDisplay">Technician</span>
+                    <span class="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded" id="userRoleBadge">TECH</span>
+                </div>
+                <button onclick="logoutUser()" class="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 text-xs px-3 py-1.5 rounded-lg font-bold transition" data-i18n="logout">خروج</button>
+            </div>
+        </header>
+
+        <!-- Site Settings & GPON Profile -->
+        <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-3 border-b border-slate-100 gap-2">
+                <div>
+                    <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <span>📍</span> <span data-i18n="site_config">إعدادات الموقع والمواصفات الميدانية</span>
+                    </h2>
+                    <p class="text-xs text-slate-400" data-i18n="site_config_sub">تحديد المركز، نقاط الوصلة، وفئة حساسية المستقبل GPON</p>
+                </div>
+                <button onclick="applyStandardScenario()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold shadow-sm transition flex items-center gap-1.5" data-i18n="standard_scenario">
+                    <span>⚡</span> <span>سيناريو FTTH نموذجي (GPON Class B+)</span>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div class="input-group">
                     <label data-i18n="at_center">المركز (اتصالات الجزائر)</label>
-                    <select id="atCenter" onchange="updateCoordinates()">
+                    <select id="atCenter" onchange="onCenterChange()">
+                        <option value="33.6831,1.0193">البيض (El Bayadh)</option>
                         <option value="27.6711,-8.1478">تندوف (Tindouf)</option>
-                        <option value="36.7525,3.04197">الجزائر العاصمة (Alger)</option>
+                        <option value="36.7525,3.0420">الجزائر العاصمة (Alger)</option>
                         <option value="35.6911,-0.6416">وهران (Oran)</option>
-                        <option value="36.365,-6.6147">قسنطينة (Constantine)</option>
+                        <option value="36.3650,6.6147">قسنطينة (Constantine)</option>
                         <option value="36.9000,7.7666">عنابة (Annaba)</option>
+                        <option value="custom">-- إحداثيات مخصصة (Custom) --</option>
                     </select>
                 </div>
                 <div class="input-group">
                     <label data-i18n="olt_coords">إحداثيات OLT (Lat, Lng)</label>
-                    <input type="text" id="oltCoords" value="27.6711,-8.1478">
+                    <input type="text" id="oltCoords" value="33.6831,1.0193" placeholder="33.6831, 1.0193">
                 </div>
                 <div class="input-group">
                     <label data-i18n="onu_coords">إحداثيات المشترك ONU (Lat, Lng)</label>
-                    <input type="text" id="onuCoords" placeholder="مثال: 27.6750,-8.1500">
+                    <input type="text" id="onuCoords" value="33.7120,1.0450" placeholder="33.7120, 1.0450">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="gpon_class">فئة الحساسية (GPON Class)</label>
+                    <select id="gponProfile" onchange="updateSensitivityProfile()">
+                        <!-- Configurable engineering defaults based on ITU-T G.984 -->
+                        <option value="B+" selected>Class B+ (Sensibilité: -28.0 dBm)</option>
+                        <option value="C+">Class C+ (Sensibilité: -32.0 dBm)</option>
+                        <option value="CUSTOM">مخصص / Custom Profile</option>
+                    </select>
                 </div>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="input-group">
-                    <label data-i18n="tech_name">اسم التقني</label>
+                    <label data-i18n="tech_name">اسم التقني المسؤول</label>
                     <input type="text" id="techName" placeholder="الاسم واللقب">
                 </div>
                 <div class="input-group">
-                    <label data-i18n="ont_sensitivity">حساسية المستقبل ONT (dBm)</label>
-                    <input type="number" id="ontSensitivity" step="0.1" value="-27.0">
+                    <label data-i18n="sensitivity_limit">حد حساسية الاستقبال الأدنى (dBm)</label>
+                    <input type="number" id="sensitivityThreshold" step="0.5" value="-28.0">
                 </div>
                 <div class="input-group">
-                    <label data-i18n="tech_notes">ملاحظات إضافية</label>
-                    <input type="text" id="techNotes" placeholder="أدخل أي ملاحظات ميدانية...">
+                    <label data-i18n="tech_notes">ملاحظات التشخيص الميداني</label>
+                    <input type="text" id="techNotes" placeholder="مثال: تم فحص الكاسيت، شكوك حول انحناء حاد">
                 </div>
             </div>
-        </div>
-        
-        <!-- Module 1: Optical Link Budget -->
-        <div class="bg-blue-50 p-4 rounded-lg mb-6 shadow-sm border border-blue-100">
-            <h2 class="text-lg font-bold text-blue-800 mb-4 border-b-2 border-blue-200 pb-2" data-i18n="mod1_title">1. حساب ميزانية الوصلة الضوئية (Link Budget)</h2>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                <div class="input-group"><label data-i18n="wavelength">الطول الموجي</label><select id="wavelength" onchange="updateDefaults()"><option value="1490" selected>1490 nm (GPON DS)</option><option value="1310">1310 nm (GPON US)</option><option value="1550">1550 nm (OTDR/Video)</option></select></div>
-                <div class="input-group"><label data-i18n="tx_power">قدرة الإرسال Tx (dBm)</label><input type="number" id="txPower" step="0.1" value="3.0"></div>
-                <div class="input-group"><label data-i18n="fiber_len">طول الألياف (km)</label><input type="number" id="fiberLength" step="0.1" value="5.0"></div>
-                <div class="input-group"><label data-i18n="attenuation">معامل التوهين (dB/km)</label><input type="number" id="attenuation" step="0.01" value="0.25"></div>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                <div class="input-group"><label data-i18n="splitter_loss">فقد المقسم (dB)</label><input type="number" id="splitterLoss" step="0.1" value="13.5"></div>
-                <div class="input-group"><label data-i18n="conn_qty">عدد الموصلات</label><input type="number" id="connQty" value="2"></div>
-                <div class="input-group"><label data-i18n="conn_loss">فقد الموصل (dB)</label><input type="number" id="connLoss" step="0.1" value="0.3"></div>
-                <div class="input-group"><label data-i18n="splice_qty">عدد نقاط اللحام</label><input type="number" id="spliceQty" value="4"></div>
-                <div class="input-group"><label data-i18n="splice_loss">فقد اللحام (dB)</label><input type="number" id="spliceLoss" step="0.01" value="0.1"></div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div class="input-group"><label data-i18n="margin">هامش النظام (dB)</label><input type="number" id="systemMargin" step="0.1" value="2.0"></div>
-                <div class="input-group"><label class="text-red-700 font-bold" data-i18n="measured_rx">القدرة المستقبلة المقاسة Measured Rx</label><input type="number" id="measuredRx" step="0.1" placeholder="مثال: -28.5" class="border-red-300"></div>
-            </div>
-        </div>
+        </section>
 
-        <!-- Module 2 & 3: OTDR Data & Validation -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200">
-                <div class="flex justify-between items-center mb-4 border-b-2 border-gray-200 pb-2">
-                    <h2 class="text-lg font-bold text-gray-800" data-i18n="mod2_title">2. بيانات جهاز OTDR</h2>
-                    <label class="bg-indigo-600 text-white text-xs px-2 py-1 rounded cursor-pointer hover:bg-indigo-700"><span data-i18n="upload_sor">📁 استيراد SOR</span><input type="file" id="sorFileInput" accept=".sor" class="hidden" onchange="parseSORFile(event)"></label>
-                </div>
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                    <div class="input-group"><label data-i18n="input_type">نوع الإدخال</label><select id="otdrInputType"><option value="distance" data-i18n="direct_dist">المسافة المباشرة (km)</option><option value="time" data-i18n="flight_time">زمن الرحلة (µs)</option></select></div>
-                    <div class="input-group"><label data-i18n="value">القيمة</label><input type="number" id="otdrValue" step="0.001" placeholder="أدخل المسافة أو الزمن"></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="input-group"><label data-i18n="ref_index">معامل الانكسار (n)</label><input type="number" id="refractiveIndex" step="0.0001" value="1.4682"></div>
-                    <div class="input-group"><label data-i18n="event_type">نوع الحدث (Event)</label><select id="otdrEventType"><option value="break">انقطاع الألياف (LOS)</option><option value="bend">انحناء دقيق (Macrobend)</option><option value="connector">موصل / انعكاس</option></select></div>
-                </div>
-                <div id="sorInfo" class="mt-2 text-xs text-indigo-700 font-bold hidden"></div>
-            </div>
-
-            <div class="bg-purple-50 p-4 rounded-lg shadow-sm border border-purple-200 flex flex-col justify-between">
+        <!-- Module 1: Optical Link Budget Calculation -->
+        <section class="bg-blue-50/60 p-5 rounded-2xl shadow-sm border border-blue-100 mb-6">
+            <div class="mb-4 pb-2 border-b border-blue-200 flex justify-between items-center">
                 <div>
-                    <h2 class="text-lg font-bold text-purple-800 mb-4 border-b-2 border-purple-200 pb-2" data-i18n="mod3_title">3. وحدة التحقق والمرفقات</h2>
-                    <div class="input-group mb-3"><label data-i18n="ground_truth">مسافة الحقيقة الأرضية (km)</label><input type="number" id="groundTruth" step="0.001" placeholder="المسافة الحقيقية (اختياري)"></div>
+                    <h2 class="text-base font-bold text-blue-900 flex items-center gap-2">
+                        <span>📊</span> <span data-i18n="mod1_title">1. حساب ميزانية الوصلة الضوئية (Optical Link Budget)</span>
+                    </h2>
+                    <p class="text-xs text-blue-700/80" data-i18n="mod1_sub">الحساب النظري الدقيق للتوهين التراكمي ومقارنته مع القياس الميداني</p>
                 </div>
-                <div class="input-group mt-2"><label data-i18n="attach_photo">📷 إرفاق صورة ميدانية</label><input type="file" id="fieldPhoto" accept="image/*" capture="environment" class="text-xs"></div>
             </div>
-        </div>
 
-        <button onclick="runDiagnostics()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition duration-300 shadow-md mb-6 btn-large" data-i18n="run_btn">🛠️ تشغيل التشخيص وخريطة GIS</button>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div class="input-group">
+                    <label data-i18n="wavelength">الطول الموجي (Wavelength)</label>
+                    <select id="wavelength" onchange="onWavelengthChange()">
+                        <!-- Configurable engineering defaults: ITU-T G.652D fiber -->
+                        <option value="1490" selected>1490 nm (GPON Downstream)</option>
+                        <option value="1310">1310 nm (GPON Upstream)</option>
+                        <option value="1550">1550 nm (Video Overlay / OTDR)</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label data-i18n="tx_power">قدرة الإرسال Tx (dBm)</label>
+                    <input type="number" id="txPower" step="0.1" value="3.0">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="fiber_len">طول الألياف البصرية (km)</label>
+                    <input type="number" id="fiberLength" step="0.01" min="0.01" value="5.20">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="attenuation">معامل التوهين الكبلي (dB/km)</label>
+                    <input type="number" id="attenuation" step="0.01" min="0.01" value="0.25">
+                </div>
+            </div>
 
-        <!-- Results Section -->
-        <div id="resultSection" class="hidden bg-white p-5 rounded-lg border-2 border-green-500 shadow-md mb-6">
-            <h2 class="text-xl font-bold mb-4 border-b pb-2" data-i18n="report_title">تقرير التشخيص الهندسي</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="space-y-3 text-sm">
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">القدرة النظرية (بدون هامش):</span> <span id="resTheoRx" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">القدرة المتوقعة (بعد الهامش):</span> <span id="resExpRx" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">القدرة المقاسة:</span> <span id="resMeasRx" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">الهامش المتاح:</span> <span id="resAvailMargin" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">الفقد الزائد:</span> <span id="resExcessLoss" class="font-bold" dir="ltr"></span></div>
-                    <div id="confidenceDisplay" class="text-xs text-gray-600 mt-1"></div>
-                    <div class="p-3 rounded mt-2 text-center font-bold" id="diagnosisAlert"></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">مسافة العطل (OTDR):</span> <span id="resOtdrDist" class="text-blue-600 font-bold" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">المسافة الكلية (OTDR):</span> <span id="resTotalDist" class="text-gray-600" dir="ltr"></span></div>
-                    <div class="flex justify-between border-b pb-1"><span class="font-bold">الخطأ المطلق (إن وجد):</span> <span id="resError" class="text-purple-600 font-bold" dir="ltr"></span></div>
-                    <div class="mt-4 pt-2 border-t flex flex-col gap-2">
-                        <label class="text-xs font-bold text-gray-600" data-i18n="upload_logo">أضف شعار اتصالات الجزائر (اختياري)</label>
-                        <input type="file" id="logoInput" accept="image/png, image/jpeg" class="text-xs" onchange="saveLogoToLocal(event)">
-                        <button onclick="generatePDFReport()" class="w-full bg-gray-800 text-white text-sm font-bold py-2 rounded hover:bg-gray-900 transition shadow" data-i18n="pdf_btn">📄 استخراج تقرير PDF بختم AT</button>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                <div class="input-group">
+                    <label data-i18n="splitter_loss">فقد المقسم الإجمالي (dB)</label>
+                    <!-- Engineering default: ~13.5 dB for 1:16, 17.5 dB for 1:32 -->
+                    <input type="number" id="splitterLoss" step="0.1" min="0" value="13.5">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="conn_qty">عدد الموصلات (Connectors)</label>
+                    <input type="number" id="connQty" min="0" step="1" value="2">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="conn_loss">فقد الموصل الفردي (dB)</label>
+                    <!-- Engineering default: 0.3 dB per connector -->
+                    <input type="number" id="connLoss" step="0.05" min="0" value="0.30">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="splice_qty">عدد اللحامات (Splices)</label>
+                    <input type="number" id="spliceQty" min="0" step="1" value="4">
+                </div>
+                <div class="input-group">
+                    <label data-i18n="splice_loss">فقد اللحام الفردي (dB)</label>
+                    <!-- Engineering default: 0.1 dB per fusion splice -->
+                    <input type="number" id="spliceLoss" step="0.01" min="0" value="0.10">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/70 p-3.5 rounded-xl border border-blue-100">
+                <div class="input-group">
+                    <label data-i18n="margin">هامش أمان التصميم (Design Safety Margin - dB)</label>
+                    <!-- Engineering default: 2.0 dB system margin -->
+                    <input type="number" id="systemMargin" step="0.1" min="0" value="2.0">
+                </div>
+                <div class="input-group">
+                    <label class="text-blue-900 font-bold" data-i18n="measured_rx">القدرة المستقبلة المقاسة فعلياً ميدانياً (Measured Rx - dBm)</label>
+                    <input type="number" id="measuredRx" step="0.1" placeholder="مثال: -19.80" class="border-blue-400 bg-white">
+                </div>
+            </div>
+        </section>
+
+        <!-- Module 2 & 3: OTDR, SOR Engine & Ground Truth -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            
+            <!-- Module 2: OTDR & SOR -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
+                        <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                            <span>📡</span> <span data-i18n="mod2_title">2. بيانات وتحليل جهاز OTDR</span>
+                        </h2>
+                        <label class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs px-2.5 py-1.5 rounded-lg cursor-pointer font-bold transition shadow-sm flex items-center gap-1">
+                            <span data-i18n="upload_sor">📁 استيراد ملف SOR</span>
+                            <input type="file" id="sorFileInput" accept=".sor,.SOR" class="hidden" onchange="handleSORUpload(event)">
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="input-group">
+                            <label data-i18n="input_type">طريقة إدخال قياس OTDR</label>
+                            <select id="otdrInputType" onchange="onOtdrInputTypeChange()">
+                                <option value="distance" data-i18n="direct_dist">المسافة المباشرة (km)</option>
+                                <option value="time_us" data-i18n="flight_time_us">زمن الرحلة (Time-of-Flight - µs)</option>
+                                <option value="time_ns" data-i18n="flight_time_ns">زمن الرحلة (Time-of-Flight - ns)</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label id="otdrValueLabel" data-i18n="otdr_val">قيمة قياس العطل</label>
+                            <input type="number" id="otdrValue" step="0.001" min="0" placeholder="مثال: 3.450">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div class="input-group">
+                            <label data-i18n="ref_index">معامل الانكسار الفعال (Group Index n)</label>
+                            <!-- Engineering default: 1.4682 for G.652 singlemode silica at 1550nm -->
+                            <input type="number" id="refractiveIndex" step="0.0001" min="1.40" max="1.60" value="1.4682">
+                        </div>
+                        <div class="input-group">
+                            <label data-i18n="event_type">طبيعة الحدث المرصود (Event)</label>
+                            <select id="otdrEventType">
+                                <option value="auto">كشف تلقائي (Automatic Detection)</option>
+                                <option value="break">انقطاع تام / نهاية ليف (Fiber Break / LOS)</option>
+                                <option value="bend">انحناء حاد (Macrobend / Step Loss)</option>
+                                <option value="connector">انعكاس موصل عالي (Reflective Connector)</option>
+                                <option value="splice">تدهور نقطة لحام (Splice Degradation)</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
-                <div class="bg-gray-100 p-2 rounded border relative">
-                    <p class="text-xs font-bold text-gray-600 mb-2" data-i18n="map_title">📍 الخريطة الجغرافية (مسار الشبكة):</p>
-                    <div id="map"></div>
+
+                <!-- SOR Status Badge -->
+                <div id="sorStatusBox" class="mt-2 text-xs p-3 rounded-lg bg-slate-50 border border-slate-200 hidden">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-700" id="sorFileName">SOR Trace</span>
+                        <span id="sorStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-bold">PARSED</span>
+                    </div>
+                    <div id="sorDetails" class="text-slate-600 mt-1.5 space-y-0.5 text-[11px]"></div>
+                </div>
+            </div>
+
+            <!-- Module 3: Validation & Field Attachments -->
+            <div class="bg-purple-50/50 p-5 rounded-2xl shadow-sm border border-purple-100 flex flex-col justify-between">
+                <div>
+                    <div class="mb-3 pb-2 border-b border-purple-200">
+                        <h2 class="text-base font-bold text-purple-900 flex items-center gap-2">
+                            <span>🎯</span> <span data-i18n="mod3_title">3. التحقق الميداني والمرفقات التوثيقية</span>
+                        </h2>
+                        <p class="text-xs text-purple-700/80" data-i18n="mod3_sub">مقارنة الحقيقة الأرضية (Ground Truth) وإرفاق صور الأعطال</p>
+                    </div>
+
+                    <div class="input-group mb-4">
+                        <label data-i18n="ground_truth">مسافة الحقيقة الأرضية الفعلية إن وجدت (Ground Truth - km)</label>
+                        <input type="number" id="groundTruth" step="0.001" min="0" placeholder="أدخل المسافة الميدانية المؤكدة بالعداد (اختياري)">
+                    </div>
+
+                    <div class="input-group mb-4">
+                        <label data-i18n="attach_photo">📷 صورة توثيقية من الميدان (OTDR Trace / Boîte / PBO)</label>
+                        <input type="file" id="fieldPhoto" accept="image/*" class="text-xs file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer">
+                    </div>
+                </div>
+
+                <div class="bg-white/80 p-3 rounded-xl border border-purple-200 text-xs text-purple-900 space-y-1">
+                    <p class="font-bold">معايير دقة التوطين الميداني:</p>
+                    <p class="text-[11px] text-purple-700">• خطأ &lt; 1%: دقة ممتازة (Excellent)</p>
+                    <p class="text-[11px] text-purple-700">• خطأ 1% - 5%: دقة تشغيلية جيدة (Good)</p>
                 </div>
             </div>
         </div>
 
-        <!-- GMAO Section -->
-        <div class="mt-8 border-t-2 pt-6">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold text-gray-700" data-i18n="gmao_title">📂 نظام إدارة الصيانة (GMAO)</h2>
-                <span class="text-xs text-gray-500">يتطلب صلاحيات المشرف للتعديل</span>
+        <!-- Master Diagnostic Execution Button -->
+        <button onclick="runDiagnostics()" id="btnRunDiagnostics" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-black py-3.5 px-6 rounded-2xl transition duration-200 shadow-lg hover:shadow-xl mb-8 flex items-center justify-center gap-2 text-base">
+            <span>⚙️</span> <span data-i18n="run_btn">تشغيل محرك التشخيص الهندسي وحساب مسار GIS</span>
+        </button>
+
+        <!-- Diagnostic & Engineering Result Section -->
+        <section id="resultSection" class="hidden bg-white p-6 rounded-2xl border-2 border-emerald-500 shadow-xl mb-8">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-slate-200 gap-2">
+                <div>
+                    <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                        <span>📋</span> <span data-i18n="report_title">تقرير التشخيص الفني وتحديد المواقع (Decision Report)</span>
+                    </h2>
+                    <p class="text-xs text-slate-500" id="reportTimestampDisplay">--</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="confidencePill" class="text-xs px-3 py-1 rounded-full font-bold bg-blue-100 text-blue-800">Confidence: 95%</span>
+                    <span id="severityPill" class="text-xs px-3 py-1 rounded-full font-bold bg-emerald-100 text-emerald-800">NORMAL</span>
+                </div>
             </div>
-            <div id="reportsList" class="space-y-3 max-h-96 overflow-y-auto pr-2"><p class="text-gray-400 text-sm text-center py-4">جاري التحميل...</p></div>
-        </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Optical Metrics & Diagnosis Column -->
+                <div class="lg:col-span-5 space-y-4">
+                    
+                    <!-- Metrics Card -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2.5 text-xs">
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600" data-i18n="res_tx">قدرة الإرسال (Tx):</span>
+                            <span id="resTxPower" class="font-bold font-mono text-slate-800" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600" data-i18n="res_tot_loss">التوهين المحسوب (Total Loss):</span>
+                            <span id="resTotalLoss" class="font-bold font-mono text-slate-800" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600 font-bold text-blue-900" data-i18n="res_exp">القدرة المتوقعة (Expected Rx):</span>
+                            <span id="resExpRx" class="font-bold font-mono text-blue-700" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600" data-i18n="res_meas">القدرة المقاسة (Measured Rx):</span>
+                            <span id="resMeasRx" class="font-bold font-mono text-slate-800" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600" data-i18n="res_excess">الفقد الزائد (Excess Optical Loss):</span>
+                            <span id="resExcessLoss" class="font-bold font-mono" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
+                            <span class="text-slate-600" data-i18n="res_margin">الهامش المتاح (Available Margin):</span>
+                            <span id="resAvailableMargin" class="font-bold font-mono" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1">
+                            <span class="text-slate-600 font-bold" data-i18n="res_dist">مسافة العطل المقدرة (OTDR):</span>
+                            <span id="resOtdrDist" class="font-bold font-mono text-indigo-700 text-sm" dir="ltr">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Diagnosis Box -->
+                    <div id="diagnosisBox" class="p-4 rounded-xl border space-y-2 bg-slate-50 border-slate-200">
+                        <div class="flex items-center gap-2">
+                            <span id="diagIcon" class="text-lg">🔍</span>
+                            <h3 id="diagTitle" class="font-bold text-sm text-slate-800">--</h3>
+                        </div>
+                        <p id="diagExplanation" class="text-xs text-slate-600 leading-relaxed">--</p>
+                        <div class="mt-2 pt-2 border-t border-slate-200/60">
+                            <p class="text-[11px] font-bold text-slate-700" data-i18n="rec_action">الإجراء الميداني الموصى به:</p>
+                            <p id="diagRecommendation" class="text-xs text-blue-800 font-semibold mt-0.5">--</p>
+                        </div>
+                    </div>
+
+                    <!-- Ground Truth Comparison Block -->
+                    <div id="groundTruthCard" class="hidden p-3.5 rounded-xl border border-purple-200 bg-purple-50/60 text-xs space-y-1.5">
+                        <span class="font-bold text-purple-900 block" data-i18n="gt_analysis">تحليل دقة القياس مقابل الحقيقة الأرضية:</span>
+                        <div class="flex justify-between text-slate-700">
+                            <span>الخطأ المطلق (Absolute Error):</span>
+                            <span id="gtAbsError" class="font-mono font-bold" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between text-slate-700">
+                            <span>الخطأ النسبي (Relative Error):</span>
+                            <span id="gtRelError" class="font-mono font-bold" dir="ltr">--</span>
+                        </div>
+                        <div class="flex justify-between text-slate-700">
+                            <span>تقييم الدقة (Classification):</span>
+                            <span id="gtAccuracyRating" class="font-bold" dir="ltr">--</span>
+                        </div>
+                    </div>
+
+                    <!-- PDF & Logo Controls -->
+                    <div class="pt-2 flex flex-col gap-2.5">
+                        <div class="input-group">
+                            <label class="text-xs font-semibold text-slate-600" data-i18n="upload_logo">شعار التقرير (مخصص للمؤسسة - اختياري):</label>
+                            <input type="file" id="logoInput" accept="image/png, image/jpeg" class="text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:bg-slate-200 file:text-slate-700" onchange="handleLogoUpload(event)">
+                        </div>
+                        <button onclick="generatePDFReport()" class="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-3 rounded-xl transition shadow flex items-center justify-center gap-2">
+                            <span>📄</span> <span data-i18n="pdf_btn">استخراج تقرير PDF هندسي معتمد</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- GIS Map & Spatial Coordinates Column -->
+                <div class="lg:col-span-7 flex flex-col gap-3">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex-1 flex flex-col">
+                        <div class="flex justify-between items-center mb-2 px-1">
+                            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                <span>🗺️</span> <span data-i18n="map_title">التوطين الجغرافي لمسار الوصلة ومنطقة العطل (GIS)</span>
+                            </span>
+                            <span id="gisFaultCoordsBadge" class="text-[11px] font-mono font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                Lat/Lng: --
+                            </span>
+                        </div>
+                        <div id="map" class="shadow-inner border border-slate-300"></div>
+                        
+                        <!-- Map Legend & Summary -->
+                        <div class="mt-3 grid grid-cols-3 gap-2 text-[11px] text-center bg-white p-2 rounded-lg border border-slate-200">
+                            <div>
+                                <span class="font-bold text-blue-700 block">OLT Distance</span>
+                                <span id="mapOltDistDisplay" class="font-mono text-slate-600">0.00 km</span>
+                            </div>
+                            <div>
+                                <span class="font-bold text-red-600 block">Fault Loc (Est.)</span>
+                                <span id="mapFaultDistDisplay" class="font-mono text-slate-600">--</span>
+                            </div>
+                            <div>
+                                <span class="font-bold text-emerald-700 block">Remaining to ONU</span>
+                                <span id="mapOnuDistDisplay" class="font-mono text-slate-600">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Maintenance Management System (GMAO Module) -->
+        <section class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-12">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 pb-4 border-b border-slate-100 gap-3">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span>📁</span> <span data-i18n="gmao_title">نظام إدارة تذاكر وأوامر الصيانة (GMAO / Work Orders)</span>
+                    </h2>
+                    <p class="text-xs text-slate-400" data-i18n="gmao_sub">متابعة مسار التدخلات الميدانية وسجل التدقيق الفني (Audit Log)</p>
+                </div>
+                
+                <!-- GMAO Filters -->
+                <div class="flex items-center flex-wrap gap-2 text-xs">
+                    <select id="gmaoStatusFilter" onchange="filterGMAOReports()" class="border rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 font-semibold">
+                        <option value="ALL" data-i18n="filter_all">جميع الحالات (All Statuses)</option>
+                        <option value="NEW">جديد (NEW)</option>
+                        <option value="IN PROGRESS">قيد المعالجة (IN PROGRESS)</option>
+                        <option value="VERIFIED">تم التحقق (VERIFIED)</option>
+                        <option value="DONE">منجز (DONE)</option>
+                        <option value="REJECTED">مرفوض (REJECTED)</option>
+                    </select>
+                    <select id="gmaoSeverityFilter" onchange="filterGMAOReports()" class="border rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-700 font-semibold">
+                        <option value="ALL">جميع المستويات (All Severities)</option>
+                        <option value="NORMAL">NORMAL</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- GMAO Work Order Cards List -->
+            <div id="reportsList" class="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                <div class="p-8 text-center text-slate-400 text-xs">
+                    <div class="animate-pulse flex justify-center mb-2">⚡</div>
+                    <span data-i18n="gmao_loading">جاري مزامنة تذاكر الصيانة مع قاعدة البيانات...</span>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (Modular v10) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
         import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-        import { getDatabase, ref, push, onValue, update, get, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+        import { getDatabase, ref, push, onValue, update, get, remove, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+        // Configuration Note: In standard client-side Firebase architectures, the API Key
+        // is an identifier, not a secret authorization token. Real security is enforced via
+        // Firebase Authentication and Server-Side Security Rules (detailed below).
         const firebaseConfig = {
             apiKey: "AIzaSyCDYxvfYYDRBbqMj4zzMj05GdGk5n4VCmY",
             authDomain: "at-optismart.firebaseapp.com",
@@ -205,490 +546,1461 @@
         const database = getDatabase(app);
         const storage = getStorage(app);
         
-        let currentUserRole = 'technician';
+        let currentUser = null;
+        let currentUserRole = 'technician'; 
         let currentUserName = '';
+        let gmaoListenerRef = null;
+        let cachedGmaoReports = [];
 
-        window.loginUser = () => {
-            const email = document.getElementById('authEmail').value;
+        // Expose Firebase Operations to Global Scope
+        window.loginUser = async () => {
+            const email = document.getElementById('authEmail').value.trim();
             const pass = document.getElementById('authPassword').value;
-            signInWithEmailAndPassword(auth, email, pass).catch(err => {
-                document.getElementById('authError').innerText = "فشل الدخول: تحقق من الصلاحيات";
-                document.getElementById('authError').classList.remove('hidden');
+            const errEl = document.getElementById('authError');
+            
+            if (!email || !pass) {
+                showToast("يرجى إدخال البريد الإلكتروني وكلمة المرور", "error");
+                return;
+            }
+
+            window.showLoading("جاري تسجيل الدخول والتحقق من الصلاحيات...");
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+                errEl.classList.add('hidden');
+            } catch (err) {
+                console.error("Auth Error:", err);
+                errEl.innerText = window.currentLang === 'ar' ? "فشل تسجيل الدخول: تحقق من بياناتك وصلاحيات الحساب" : "Échec de connexion: Vérifiez vos identifiants";
+                errEl.classList.remove('hidden');
+            } finally {
+                window.hideLoading();
+            }
+        };
+
+        window.logoutUser = () => {
+            if (gmaoListenerRef) {
+                off(gmaoListenerRef);
+                gmaoListenerRef = null;
+            }
+            signOut(auth).then(() => {
+                showToast("تم تسجيل الخروج بنجاح", "info");
             });
         };
 
-        window.logoutUser = () => signOut(auth);
-
+        // Authentication State Listener
         onAuthStateChanged(auth, async (user) => {
             if (user) {
+                currentUser = user;
                 document.getElementById('authSection').classList.add('hidden');
                 document.getElementById('appSection').classList.remove('hidden');
-                const userRef = ref(database, 'users/' + user.uid);
-                const snapshot = await get(userRef);
-                if(snapshot.exists()) {
-                    currentUserRole = snapshot.val().role;
-                    currentUserName = snapshot.val().name || user.email;
-                } else {
-                    currentUserName = user.email;
+                
+                try {
+                    const userRef = ref(database, 'users/' + user.uid);
+                    const snapshot = await get(userRef);
+                    if (snapshot.exists()) {
+                        const userData = snapshot.val();
+                        currentUserRole = userData.role || 'technician';
+                        currentUserName = userData.name || user.email.split('@')[0];
+                    } else {
+                        currentUserRole = 'technician';
+                        currentUserName = user.email.split('@')[0];
+                    }
+                } catch (e) {
+                    console.warn("User profile fetch failed, using fallback:", e);
+                    currentUserRole = 'technician';
+                    currentUserName = user.email.split('@')[0];
                 }
+                
+                document.getElementById('userNameDisplay').innerText = window.escapeHTML(currentUserName);
                 document.getElementById('userRoleBadge').innerText = currentUserRole.toUpperCase();
-                loadGMAOData();
+                document.getElementById('techName').value = currentUserName;
+                
+                initGMAOListener();
             } else {
+                currentUser = null;
                 document.getElementById('authSection').classList.remove('hidden');
                 document.getElementById('appSection').classList.add('hidden');
             }
         });
 
+        // Photo Upload Helper
         async function uploadPhotoIfAny() {
-            const file = document.getElementById('fieldPhoto').files[0];
-            if(!file) return null;
-            const imgRef = storageRef(storage, 'field_photos/' + Date.now() + '_' + file.name);
+            const fileInput = document.getElementById('fieldPhoto');
+            const file = fileInput.files[0];
+            if (!file) return null;
+
+            // Enforce file size limit (< 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                window.showToast("حجم الصورة يتجاوز 5 ميغابايت", "error");
+                return null;
+            }
+
+            const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+            const photoPath = `field_photos/${currentUser.uid}/${Date.now()}_${cleanFileName}`;
+            const imgRef = storageRef(storage, photoPath);
+            
             await uploadBytes(imgRef, file);
             return await getDownloadURL(imgRef);
         }
 
-        window.sendToGMAO = async (data) => {
-            if(currentUserRole === 'technician' || currentUserRole === 'admin' || currentUserRole === 'supervisor') {
-                const photoUrl = await uploadPhotoIfAny();
-                data.photoUrl = photoUrl;
-                data.createdBy = currentUserName;
-                data.auditLog = [{
-                    action: 'Created',
-                    by: currentUserName,
-                    date: new Date().toLocaleString()
-                }];
-                push(ref(database, 'gmao_reports_v2'), data);
+        // Save Report to Firebase RTDB
+        window.saveReportToFirebase = async (data) => {
+            if (!currentUser) return;
+            
+            window.showLoading("جاري حفظ التقرير في نظام إدارة الصيانة...");
+            try {
+                let photoUrl = null;
+                try {
+                    photoUrl = await uploadPhotoIfAny();
+                } catch (imgErr) {
+                    console.error("Storage upload error:", imgErr);
+                    window.showToast("تعذر رفع الصورة، تم حفظ بيانات التقرير فقط", "warning");
+                }
+
+                const reportPayload = {
+                    ...data,
+                    photoUrl: photoUrl,
+                    createdByUid: currentUser.uid,
+                    createdByName: currentUserName,
+                    createdAt: new Date().toISOString(),
+                    status: 'NEW',
+                    auditLog: [{
+                        action: 'CREATED',
+                        byUid: currentUser.uid,
+                        byName: currentUserName,
+                        timestamp: new Date().toISOString(),
+                        notes: 'Initial Field Diagnosis Ticket'
+                    }]
+                };
+
+                await push(ref(database, 'gmao_reports_v2'), reportPayload);
+                window.showToast(window.currentLang === 'ar' ? "تم إرسال تذكرة الصيانة بنجاح إلى GMAO" : "Ticket GMAO enregistré avec succès", "success");
+            } catch (err) {
+                console.error("GMAO Save Error:", err);
+                window.showToast("خطأ في حفظ التقرير بقاعدة البيانات", "error");
+            } finally {
+                window.hideLoading();
             }
         };
 
+        // Update Work Order Status (Supervisors & Admins only)
         window.updateWorkOrderStatus = async (reportId, newStatus) => {
-            if(currentUserRole !== 'supervisor' && currentUserRole !== 'admin') {
-                alert("عذراً، صلاحيات المشرف أو المدير مطلوبة لتغيير الحالة.");
+            if (currentUserRole !== 'supervisor' && currentUserRole !== 'admin') {
+                window.showToast(window.currentLang === 'ar' ? "صلاحيات المشرف (Supervisor) أو المدير مطلوبة لتغيير الحالة" : "Privilèges Superviseur ou Admin requis", "warning");
                 return;
             }
-            const reportRef = ref(database, 'gmao_reports_v2/' + reportId);
-            const snapshot = await get(reportRef);
-            let currentAudit = snapshot.val().auditLog || [];
-            currentAudit.push({
-                action: `Status changed to ${newStatus}`,
-                by: currentUserName,
-                date: new Date().toLocaleString()
-            });
-            update(reportRef, { status: newStatus, auditLog: currentAudit });
+
+            window.showLoading("جاري تحديث حالة أمر الصيانة...");
+            try {
+                const reportRef = ref(database, 'gmao_reports_v2/' + reportId);
+                const snapshot = await get(reportRef);
+                if (!snapshot.exists()) {
+                    window.showToast("التقرير غير موجود", "error");
+                    return;
+                }
+
+                const reportData = snapshot.val();
+                const currentAudit = Array.isArray(reportData.auditLog) ? reportData.auditLog : [];
+                const previousStatus = reportData.status || 'NEW';
+
+                currentAudit.push({
+                    action: 'STATUS_CHANGED',
+                    byUid: currentUser.uid,
+                    byName: currentUserName,
+                    previousStatus: previousStatus,
+                    newStatus: newStatus,
+                    timestamp: new Date().toISOString()
+                });
+
+                await update(reportRef, { 
+                    status: newStatus,
+                    auditLog: currentAudit,
+                    updatedAt: new Date().toISOString()
+                });
+
+                window.showToast(`تم تغيير الحالة إلى: ${newStatus}`, "success");
+            } catch (err) {
+                console.error("Status update error:", err);
+                window.showToast("فشل تحديث الحالة", "error");
+            } finally {
+                window.hideLoading();
+            }
         };
 
+        // Delete Report (Admin only)
         window.deleteWorkOrder = async (reportId) => {
-            if(currentUserRole !== 'admin') {
-                alert("فقط المدير يمكنه حذف التقارير.");
+            if (currentUserRole !== 'admin') {
+                window.showToast("صلاحيات المدير (Admin) فقط مسموح لها بالحذف", "error");
                 return;
             }
-            await remove(ref(database, 'gmao_reports_v2/' + reportId));
+            if (!confirm("هل أنت متأكد من رغبتك في حذف هذا التقرير نهائياً؟")) return;
+
+            try {
+                await remove(ref(database, 'gmao_reports_v2/' + reportId));
+                window.showToast("تم حذف التقرير بنجاح", "info");
+            } catch (err) {
+                console.error("Delete error:", err);
+                window.showToast("تعذر حذف التقرير", "error");
+            }
         };
 
-        function loadGMAOData() {
-            onValue(ref(database, 'gmao_reports_v2'), (snapshot) => {
-                const container = document.getElementById('reportsList');
-                container.innerHTML = '';
+        // Realtime Listener for GMAO Reports
+        function initGMAOListener() {
+            if (gmaoListenerRef) off(gmaoListenerRef);
+            
+            gmaoListenerRef = ref(database, 'gmao_reports_v2');
+            onValue(gmaoListenerRef, (snapshot) => {
+                cachedGmaoReports = [];
                 const data = snapshot.val();
                 if (data) {
-                    Object.entries(data).reverse().forEach(([key, report]) => {
-                        const status = report.status || 'New';
-                        let statusColor = status === 'Done' ? 'bg-green-500' : (status === 'In Progress' ? 'bg-yellow-500' : 'bg-red-500');
-                        let auditHtml = '';
-                        if(report.auditLog && report.auditLog.length) {
-                            const last = report.auditLog[report.auditLog.length-1];
-                            auditHtml = `<div class="text-[10px] text-gray-400 mt-1">آخر تعديل: ${last.by} (${last.date})</div>`;
-                        }
-                        let photoHtml = report.photoUrl ? `<a href="${report.photoUrl}" target="_blank" class="text-[10px] text-blue-500 underline">صورة مرفقة</a>` : '';
-                        const card = document.createElement('div');
-                        card.className = "bg-white border p-3 rounded shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center text-sm";
-                        card.innerHTML = `
-                            <div class="mb-2 md:mb-0">
-                                <div class="font-bold text-gray-800">${report.diagnosis}</div>
-                                <div class="text-xs text-gray-500">التقني: ${report.createdBy} | التاريخ: ${report.timestamp}</div>
-                                <div class="text-xs text-blue-600 font-bold mb-1">مسافة العطل: ${report.otdrDistance} km</div>
-                                <span class="${statusColor} text-white px-2 py-0.5 rounded text-[10px] font-bold shadow">${status}</span>
-                                ${photoHtml} ${auditHtml}
-                            </div>
-                            <div class="flex gap-1 w-full md:w-auto mt-2 md:mt-0">
-                                <button onclick="updateWorkOrderStatus('${key}', 'New')" class="text-[10px] px-2 py-1 border rounded bg-gray-50">جديد</button>
-                                <button onclick="updateWorkOrderStatus('${key}', 'In Progress')" class="text-[10px] px-2 py-1 border rounded bg-gray-50">قيد العمل</button>
-                                <button onclick="updateWorkOrderStatus('${key}', 'Done')" class="text-[10px] px-2 py-1 border rounded bg-gray-50">منجز</button>
-                                ${currentUserRole === 'admin' ? `<button onclick="deleteWorkOrder('${key}')" class="text-[10px] px-2 py-1 border rounded bg-red-100 text-red-600">حذف</button>` : ''}
-                            </div>
-                        `;
-                        container.appendChild(card);
+                    Object.entries(data).forEach(([key, val]) => {
+                        cachedGmaoReports.push({ id: key, ...val });
                     });
+                    // Sort descending by creation date
+                    cachedGmaoReports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
                 }
+                renderGMAOList(cachedGmaoReports);
+            }, (error) => {
+                console.error("GMAO Sync error:", error);
+                document.getElementById('reportsList').innerHTML = `<p class="text-red-500 text-xs text-center py-4">تعذر تحميل بيانات GMAO</p>`;
+            });
+        }
+
+        window.filterGMAOReports = () => {
+            const statusFilter = document.getElementById('gmaoStatusFilter').value;
+            const severityFilter = document.getElementById('gmaoSeverityFilter').value;
+
+            let filtered = cachedGmaoReports.filter(rep => {
+                const matchStatus = (statusFilter === 'ALL') || (rep.status === statusFilter);
+                const matchSeverity = (severityFilter === 'ALL') || (rep.severity === severityFilter);
+                return matchStatus && matchSeverity;
+            });
+
+            renderGMAOList(filtered);
+        };
+
+        function renderGMAOList(reports) {
+            const container = document.getElementById('reportsList');
+            container.innerHTML = '';
+
+            if (!reports || reports.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-dashed border-slate-200">لا توجد تذاكر صيانة مطابقة للشروط</div>`;
+                return;
+            }
+
+            reports.forEach(report => {
+                const status = report.status || 'NEW';
+                let statusBadgeColor = 'bg-slate-100 text-slate-800 border-slate-300';
+                if (status === 'NEW') statusBadgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
+                else if (status === 'IN PROGRESS') statusBadgeColor = 'bg-amber-50 text-amber-700 border-amber-200';
+                else if (status === 'VERIFIED') statusBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
+                else if (status === 'DONE') statusBadgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                else if (status === 'REJECTED') statusBadgeColor = 'bg-rose-50 text-rose-700 border-rose-200';
+
+                let severityBadge = '';
+                if (report.severity === 'CRITICAL') severityBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-600 text-white">CRITICAL</span>';
+                else if (report.severity === 'WARNING') severityBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500 text-white">WARNING</span>';
+                else severityBadge = '<span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white">NORMAL</span>';
+
+                let auditSummary = '';
+                if (Array.isArray(report.auditLog) && report.auditLog.length > 0) {
+                    const last = report.auditLog[report.auditLog.length - 1];
+                    const dateFormatted = new Date(last.timestamp).toLocaleString(window.currentLang === 'ar' ? 'ar-DZ' : 'fr-FR');
+                    auditSummary = `<div class="text-[10px] text-slate-400 mt-1">آخر إجراء: ${window.escapeHTML(last.action)} بواسطة ${window.escapeHTML(last.byName)} (${dateFormatted})</div>`;
+                }
+
+                const photoBtn = report.photoUrl 
+                    ? `<a href="${window.escapeHTML(report.photoUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">📷 صورة ميدانية</a>` 
+                    : '';
+
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 hover:border-blue-300 p-4 rounded-xl shadow-sm transition flex flex-col md:flex-row justify-between items-start md:items-center gap-3";
+
+                const isSupervisorOrAdmin = (currentUserRole === 'supervisor' || currentUserRole === 'admin');
+                const isAdmin = (currentUserRole === 'admin');
+
+                card.innerHTML = `
+                    <div class="space-y-1 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-bold text-slate-800 text-sm">${window.escapeHTML(report.diagnosis || 'Diagnostic')}</span>
+                            ${severityBadge}
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBadgeColor}">${status}</span>
+                            ${photoBtn}
+                        </div>
+                        <div class="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                            <span>التقني: <b class="text-slate-700">${window.escapeHTML(report.createdByName || 'N/A')}</b></span>
+                            <span>Rx مقاس: <b class="font-mono text-slate-700">${window.escapeHTML(String(report.measuredRx))} dBm</b></span>
+                            <span>مسافة العطل: <b class="font-mono text-blue-700">${window.escapeHTML(String(report.otdrDistance))} km</b></span>
+                            <span>المركز: <b class="text-slate-700">${window.escapeHTML(report.centerName || 'Algérie Télécom')}</b></span>
+                        </div>
+                        ${report.notes ? `<p class="text-xs text-slate-600 italic bg-slate-50 p-1.5 rounded">"${window.escapeHTML(report.notes)}"</p>` : ''}
+                        ${auditSummary}
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-1 w-full md:w-auto pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                        ${isSupervisorOrAdmin ? `
+                            <button onclick="updateWorkOrderStatus('${report.id}', 'IN PROGRESS')" class="text-[10px] px-2.5 py-1 rounded font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition">معالجة</button>
+                            <button onclick="updateWorkOrderStatus('${report.id}', 'VERIFIED')" class="text-[10px] px-2.5 py-1 rounded font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition">تحقق</button>
+                            <button onclick="updateWorkOrderStatus('${report.id}', 'DONE')" class="text-[10px] px-2.5 py-1 rounded font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition">إنجاز</button>
+                            <button onclick="updateWorkOrderStatus('${report.id}', 'REJECTED')" class="text-[10px] px-2.5 py-1 rounded font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">رفض</button>
+                        ` : ''}
+                        ${isAdmin ? `
+                            <button onclick="deleteWorkOrder('${report.id}')" class="text-[10px] px-2 py-1 rounded font-bold bg-red-600 hover:bg-red-700 text-white transition">حذف</button>
+                        ` : ''}
+                    </div>
+                `;
+                container.appendChild(card);
             });
         }
     </script>
 
-    <!-- Core Logic (تمت إعادة كتابة المحلل والتشخيص و GIS) -->
+    <!-- Core Engineering Diagnostics, SOR Parser, Math, GIS & PDF Logic -->
     <script>
+        // Constants & Physics Parameters
+        const SPEED_OF_LIGHT_KM_S = 299792.458; // c in km/s (vacuum)
         let reportDataStore = {};
         let map = null;
-        let oltMarker, onuMarker, faultMarker, networkLine, faultLineToOlt, faultLineToOnu;
+        let oltMarker = null;
+        let onuMarker = null;
+        let faultMarker = null;
+        let faultZoneCircle = null;
+        let networkLine = null;
         let currentLang = localStorage.getItem('atOptiLang') || 'ar';
-        
-        // قاموس الترجمة كما هو موجود مسبقاً (لم يتغير)
-        const i18n = { ar: { /* ... نفس الكلمات السابقة ... */ }, fr: { /* ... */ } }; // اختصاراً للطول لم نكررها
-        // لكن سنعيد تضمين الكلمات الأساسية التي قد تظهر في الكود الجديد.
-        i18n.ar = { ...i18n.ar, theoretical_rx: "القدرة النظرية (بدون هامش)", available_margin: "الهامش المتاح", confidence: "نسبة الثقة", total_distance: "المسافة الكلية (OTDR)", abs_error: "الخطأ المطلق", fault_location: "موقع العطل المقدر", olt: "مقر OLT", onu: "مشترك ONU", fault: "نقطة العطل" };
-        i18n.fr = { ...i18n.fr, theoretical_rx: "Rx Théorique (sans marge)", available_margin: "Marge Disponible", confidence: "Score de Confiance", total_distance: "Distance Totale (OTDR)", abs_error: "Erreur Absolue", fault_location: "Position Estimée du Défaut", olt: "OLT", onu: "Client ONU", fault: "Point de Défaut" };
+        let currentParsedSOR = null;
+
+        // Security Utility: Prevent XSS
+        window.escapeHTML = function(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+
+        // UI Feedback: Toast Notification System
+        window.showToast = function(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            let bg = 'bg-slate-800 text-white';
+            let icon = 'ℹ️';
+            if (type === 'success') { bg = 'bg-emerald-600 text-white'; icon = '✅'; }
+            else if (type === 'error') { bg = 'bg-rose-600 text-white'; icon = '❌'; }
+            else if (type === 'warning') { bg = 'bg-amber-600 text-white'; icon = '⚠️'; }
+
+            toast.className = `toast pointer-events-auto p-3.5 rounded-xl shadow-xl flex items-center gap-2.5 text-xs font-bold ${bg}`;
+            toast.innerHTML = `<span>${icon}</span><span class="flex-1">${window.escapeHTML(message)}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        };
+
+        window.showLoading = function(text) {
+            document.getElementById('loadingText').innerText = text || 'جاري المعالجة...';
+            document.getElementById('globalLoading').classList.remove('hidden');
+        };
+
+        window.hideLoading = function() {
+            document.getElementById('globalLoading').classList.add('hidden');
+        };
+
+        // Bilingual Internationalization Dictionary
+        const i18n = {
+            ar: {
+                app_desc: "نظام التشخيص الهندسي المتقدم وتحليل ميزانية القدرة وتحديد أعطال الألياف البصرية",
+                login_subtitle: "بوابة التشخيص الميداني والدعم الهندسي لشبكات FTTH/GPON",
+                login_btn: "تسجيل الدخول",
+                email: "البريد الإلكتروني المهني",
+                password: "كلمة المرور",
+                site_config: "إعدادات الموقع والمواصفات الميدانية",
+                site_config_sub: "تحديد المركز، نقاط الوصلة، وفئة حساسية المستقبل GPON",
+                standard_scenario: "سيناريو FTTH نموذجي (GPON Class B+)",
+                at_center: "المركز (اتصالات الجزائر)",
+                olt_coords: "إحداثيات OLT (Lat, Lng)",
+                onu_coords: "إحداثيات المشترك ONU (Lat, Lng)",
+                gpon_class: "فئة الحساسية (GPON Class)",
+                sensitivity_limit: "حد حساسية الاستقبال الأدنى (dBm)",
+                tech_name: "اسم التقني المسؤول",
+                tech_notes: "ملاحظات التشخيص الميداني",
+                mod1_title: "1. حساب ميزانية الوصلة الضوئية (Optical Link Budget)",
+                mod1_sub: "الحساب النظري الدقيق للتوهين التراكمي ومقارنته مع القياس الميداني",
+                wavelength: "الطول الموجي (Wavelength)",
+                tx_power: "قدرة الإرسال Tx (dBm)",
+                fiber_len: "طول الألياف البصرية (km)",
+                attenuation: "معامل التوهين الكبلي (dB/km)",
+                splitter_loss: "فقد المقسم الإجمالي (dB)",
+                conn_qty: "عدد الموصلات (Connectors)",
+                conn_loss: "فقد الموصل الفردي (dB)",
+                splice_qty: "عدد اللحامات (Splices)",
+                splice_loss: "فقد اللحام الفردي (dB)",
+                margin: "هامش أمان التصميم (Design Safety Margin - dB)",
+                measured_rx: "القدرة المستقبلة المقاسة فعلياً ميدانياً (Measured Rx - dBm)",
+                mod2_title: "2. بيانات وتحليل جهاز OTDR",
+                upload_sor: "📁 استيراد ملف SOR",
+                input_type: "طريقة إدخال قياس OTDR",
+                direct_dist: "المسافة المباشرة (km)",
+                flight_time_us: "زمن الرحلة (Time-of-Flight - µs)",
+                flight_time_ns: "زمن الرحلة (Time-of-Flight - ns)",
+                otdr_val: "قيمة قياس العطل",
+                ref_index: "معامل الانكسار الفعال (Group Index n)",
+                event_type: "طبيعة الحدث المرصود (Event)",
+                mod3_title: "3. التحقق الميداني والمرفقات التوثيقية",
+                mod3_sub: "مقارنة الحقيقة الأرضية (Ground Truth) وإرفاق صور الأعطال",
+                ground_truth: "مسافة الحقيقة الأرضية الفعلية إن وجدت (Ground Truth - km)",
+                attach_photo: "📷 صورة توثيقية من الميدان (OTDR Trace / Boîte / PBO)",
+                run_btn: "تشغيل محرك التشخيص الهندسي وحساب مسار GIS",
+                report_title: "تقرير التشخيص الفني وتحديد المواقع (Decision Report)",
+                res_tx: "قدرة الإرسال (Tx):",
+                res_tot_loss: "التوهين المحسوب (Total Loss):",
+                res_exp: "القدرة المتوقعة (Expected Rx):",
+                res_meas: "القدرة المقاسة (Measured Rx):",
+                res_excess: "الفقد الزائد (Excess Optical Loss):",
+                res_margin: "الهامش المتاح (Available Margin):",
+                res_dist: "مسافة العطل المقدرة (OTDR):",
+                rec_action: "الإجراء الميداني الموصى به:",
+                gt_analysis: "تحليل دقة القياس مقابل الحقيقة الأرضية:",
+                upload_logo: "شعار التقرير (مخصص للمؤسسة - اختياري):",
+                pdf_btn: "استخراج تقرير PDF هندسي معتمد",
+                map_title: "التوطين الجغرافي لمسار الوصلة ومنطقة العطل (GIS)",
+                gmao_title: "نظام إدارة تذاكر وأوامر الصيانة (GMAO / Work Orders)",
+                gmao_sub: "متابعة مسار التدخلات الميدانية وسجل التدقيق الفني (Audit Log)",
+                filter_all: "جميع الحالات (All Statuses)",
+                gmao_loading: "جاري مزامنة تذاكر الصيانة مع قاعدة البيانات...",
+                logout: "خروج"
+            },
+            fr: {
+                app_desc: "Système de diagnostic optique avancé, bilan de liaison et localisation de pannes FTTH/GPON",
+                login_subtitle: "Portail d'aide à la décision technique et maintenance réseau",
+                login_btn: "Connexion",
+                email: "Email Professionnel",
+                password: "Mot de Passe",
+                site_config: "Configuration du Site et Profil GPON",
+                site_config_sub: "Définition du centre, coordonnées et sensibilité de réception",
+                standard_scenario: "Scénario FTTH Standard (GPON Class B+)",
+                at_center: "Centre (Algérie Télécom)",
+                olt_coords: "Coordonnées OLT (Lat, Lng)",
+                onu_coords: "Coordonnées ONU Client (Lat, Lng)",
+                gpon_class: "Classe de Sensibilité GPON",
+                sensitivity_limit: "Seuil de Sensibilité Min (dBm)",
+                tech_name: "Nom du Technicien Responsable",
+                tech_notes: "Notes et Observations Terrain",
+                mod1_title: "1. Bilan de Liaison Optique (Link Budget)",
+                mod1_sub: "Calcul rigoureux de l'atténuation théorique cumulée",
+                wavelength: "Longueur d'Onde",
+                tx_power: "Puissance d'Émission Tx (dBm)",
+                fiber_len: "Longueur de Fibre (km)",
+                attenuation: "Atténuation Linéique (dB/km)",
+                splitter_loss: "Perte Totale Splitter (dB)",
+                conn_qty: "Nombre de Connecteurs",
+                conn_loss: "Perte par Connecteur (dB)",
+                splice_qty: "Nombre d'Épissures",
+                splice_loss: "Perte par Épissure (dB)",
+                margin: "Marge de Sécurité Système (dB)",
+                measured_rx: "Puissance Reçue Mesurée (Measured Rx - dBm)",
+                mod2_title: "2. Données et Analyse Réflectométrique (OTDR)",
+                upload_sor: "📁 Importer Fichier SOR",
+                input_type: "Type d'Entrée Réflectomètre",
+                direct_dist: "Distance Directe (km)",
+                flight_time_us: "Temps de Vol (Time-of-Flight - µs)",
+                flight_time_ns: "Temps de Vol (Time-of-Flight - ns)",
+                otdr_val: "Valeur de Mesure Défaut",
+                ref_index: "Indice de Réfraction de Groupe (n)",
+                event_type: "Nature de l'Événement",
+                mod3_title: "3. Validation Terrain et Pièces Jointes",
+                mod3_sub: "Comparaison avec la distance réelle (Ground Truth)",
+                ground_truth: "Distance Réelle Terrain (Ground Truth - km)",
+                attach_photo: "📷 Photo de Justification Terrain",
+                run_btn: "Lancer le Moteur de Diagnostic et Cartographie GIS",
+                report_title: "Rapport de Diagnostic Technique et Décision",
+                res_tx: "Puissance d'Émission (Tx):",
+                res_tot_loss: "Perte Totale Calculée:",
+                res_exp: "Puissance Attendue (Expected Rx):",
+                res_meas: "Puissance Mesurée (Measured Rx):",
+                res_excess: "Perte Excédentaire:",
+                res_margin: "Marge Disponible:",
+                res_dist: "Distance Défaut (OTDR):",
+                rec_action: "Action Recommandée:",
+                gt_analysis: "Analyse de Précision Terrain (Ground Truth):",
+                upload_logo: "Logo Personnalisé (Optionnel):",
+                pdf_btn: "Exporter Rapport Technique PDF",
+                map_title: "Localisation Géographique et Trajectoire GIS",
+                gmao_title: "Gestion de Maintenance Assistée (GMAO / Work Orders)",
+                gmao_sub: "Suivi des interventions et journal d'audit (Audit Log)",
+                filter_all: "Tous les statuts (All Statuses)",
+                gmao_loading: "Synchronisation des tickets avec la base de données...",
+                logout: "Déconnexion"
+            }
+        };
 
         function setLanguage(lang) {
             currentLang = lang;
             document.getElementById('html-root').dir = lang === 'ar' ? 'rtl' : 'ltr';
             document.getElementById('langBtn').innerText = lang === 'ar' ? 'FR' : 'AR';
             localStorage.setItem('atOptiLang', lang);
+            
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if(i18n[lang] && i18n[lang][key]) {
-                    if(el.tagName === 'INPUT' && el.type === 'text') el.placeholder = i18n[lang][key];
+                if (i18n[lang] && i18n[lang][key]) {
+                    if (el.tagName === 'INPUT' && el.type === 'text') el.placeholder = i18n[lang][key];
                     else el.innerText = i18n[lang][key];
                 }
             });
         }
-        window.toggleLanguage = () => setLanguage(currentLang === 'ar' ? 'fr' : 'ar');
+
+        window.toggleLanguage = () => {
+            setLanguage(currentLang === 'ar' ? 'fr' : 'ar');
+        };
 
         window.onload = () => {
             setLanguage(currentLang);
-            const saved = JSON.parse(localStorage.getItem('atOptiSettings'));
-            if(saved) {
-                document.getElementById('techName').value = saved.techName || '';
-                document.getElementById('oltCoords').value = saved.oltCoords || '27.6711,-8.1478';
-                document.getElementById('onuCoords').value = saved.onuCoords || '';
-                document.getElementById('ontSensitivity').value = saved.ontSensitivity || '-27.0';
+            loadSavedSettings();
+        };
+
+        function loadSavedSettings() {
+            try {
+                const saved = JSON.parse(localStorage.getItem('atOptiSettings_v2'));
+                if (saved) {
+                    if (saved.techName) document.getElementById('techName').value = saved.techName;
+                    if (saved.oltCoords) document.getElementById('oltCoords').value = saved.oltCoords;
+                    if (saved.onuCoords) document.getElementById('onuCoords').value = saved.onuCoords;
+                }
+            } catch (e) {}
+        }
+
+        function saveLocalSettings() {
+            try {
+                const settings = {
+                    techName: document.getElementById('techName').value,
+                    oltCoords: document.getElementById('oltCoords').value,
+                    onuCoords: document.getElementById('onuCoords').value
+                };
+                localStorage.setItem('atOptiSettings_v2', JSON.stringify(settings));
+            } catch (e) {}
+        }
+
+        window.onCenterChange = () => {
+            const sel = document.getElementById('atCenter');
+            if (sel.value !== 'custom') {
+                document.getElementById('oltCoords').value = sel.value;
+                // Generate a nearby ONU location for realistic demo
+                const parts = sel.value.split(',');
+                const lat = parseFloat(parts[0]);
+                const lng = parseFloat(parts[1]);
+                document.getElementById('onuCoords').value = `${(lat + 0.028).toFixed(4)},${(lng + 0.025).toFixed(4)}`;
             }
         };
 
-        function saveLocalSettings() {
-            const settings = {
-                techName: document.getElementById('techName').value,
-                oltCoords: document.getElementById('oltCoords').value,
-                onuCoords: document.getElementById('onuCoords').value,
-                ontSensitivity: document.getElementById('ontSensitivity').value
-            };
-            localStorage.setItem('atOptiSettings', JSON.stringify(settings));
-        }
+        window.updateSensitivityProfile = () => {
+            const prof = document.getElementById('gponProfile').value;
+            const sensInput = document.getElementById('sensitivityThreshold');
+            if (prof === 'B+') sensInput.value = "-28.0";
+            else if (prof === 'C+') sensInput.value = "-32.0";
+        };
 
-        window.updateCoordinates = () => {
-            document.getElementById('oltCoords').value = document.getElementById('atCenter').value;
+        window.onWavelengthChange = () => {
+            const wl = document.getElementById('wavelength').value;
+            const att = document.getElementById('attenuation');
+            // Engineering defaults: G.652D singlemode fiber attenuation spectrum
+            if (wl === '1310') att.value = "0.35";
+            else if (wl === '1490') att.value = "0.25";
+            else if (wl === '1550') att.value = "0.20";
+        };
+
+        window.onOtdrInputTypeChange = () => {
+            const type = document.getElementById('otdrInputType').value;
+            const label = document.getElementById('otdrValueLabel');
+            if (type === 'distance') label.innerText = currentLang === 'ar' ? 'المسافة المباشرة (km)' : 'Distance Directe (km)';
+            else if (type === 'time_us') label.innerText = currentLang === 'ar' ? 'زمن الرحلة (µs)' : 'Temps de Vol (µs)';
+            else if (type === 'time_ns') label.innerText = currentLang === 'ar' ? 'زمن الرحلة (ns)' : 'Temps de Vol (ns)';
         };
 
         window.applyStandardScenario = () => {
+            document.getElementById('atCenter').value = "33.6831,1.0193";
+            document.getElementById('oltCoords').value = "33.6831,1.0193";
+            document.getElementById('onuCoords').value = "33.7120,1.0450";
             document.getElementById('wavelength').value = "1490";
+            document.getElementById('gponProfile').value = "B+";
+            document.getElementById('sensitivityThreshold').value = "-28.0";
             document.getElementById('txPower').value = "3.0";
+            document.getElementById('fiberLength').value = "5.20";
             document.getElementById('attenuation').value = "0.25";
-            document.getElementById('splitterLoss').value = "13.5";
+            document.getElementById('splitterLoss').value = "13.5"; // Configurable 1:16 engineering default
             document.getElementById('connQty').value = "2";
-            document.getElementById('connLoss').value = "0.3";
+            document.getElementById('connLoss').value = "0.30";
             document.getElementById('spliceQty').value = "4";
-            document.getElementById('spliceLoss').value = "0.1";
+            document.getElementById('spliceLoss').value = "0.10";
             document.getElementById('systemMargin').value = "2.0";
+            document.getElementById('measuredRx').value = "-23.80";
+            document.getElementById('otdrInputType').value = "distance";
+            document.getElementById('otdrValue').value = "3.450";
+            document.getElementById('refractiveIndex').value = "1.4682";
+            document.getElementById('otdrEventType').value = "bend";
+            document.getElementById('groundTruth').value = "3.440";
+            showToast("تم تطبيق السيناريو النموذجي لشبكة FTTH", "success");
         };
 
-        function updateDefaults() {
-            const wl = document.getElementById('wavelength').value;
-            document.getElementById('attenuation').value = (wl === '1310' ? '0.35' : (wl === '1490' ? '0.25' : '0.20'));
-        }
-
-        // =============== SOR Parser مُعاد كتابته ===============
-        window.parseSORFile = (event) => {
+        window.handleLogoUpload = (event) => {
             const file = event.target.files[0];
             if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                showToast("حجم الشعار كبير جداً (الأقصى 2 ميغابايت)", "warning");
+                return;
+            }
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const buffer = e.target.result;
-                const view = new DataView(buffer);
-                const bytes = new Uint8Array(buffer);
-                try {
-                    // قراءة Map Block للحصول على عناوين الكتل الفعلية
-                    const mapOffset = findBlock('Map', bytes, buffer.byteLength);
-                    if (mapOffset === -1) throw new Error("Map block not found");
-                    const mapEnd = mapOffset + 24; // حجم رأس الكتلة
-                    const numBlocks = view.getUint16(mapEnd + 2, true);
-                    
-                    let genParamsOffset = -1, dataPtsOffset = -1, keyEventsOffset = -1;
-                    for (let i = 0; i < numBlocks; i++) {
-                        const entryStart = mapEnd + 4 + i * 12;
-                        const blockName = readString(bytes, entryStart, 4).trim();
-                        const blockPtr = view.getUint32(entryStart + 8, true);
-                        if (blockName === 'GenP') genParamsOffset = blockPtr;
-                        else if (blockName === 'Data') dataPtsOffset = blockPtr;
-                        else if (blockName === 'KeyE') keyEventsOffset = blockPtr;
-                    }
-                    
-                    if (dataPtsOffset === -1) throw new Error("DataPts block not found");
-                    
-                    // استخراج عدد النقاط والتباعد من GenParams
-                    let numPoints = 1000, dataSpacing = 1.0;
-                    if (genParamsOffset !== -1) {
-                        // قراءة وفق بنية GR-196 (نقاط إضافية لبعض الأجهزة)
-                        numPoints = view.getUint32(genParamsOffset + 16, true);
-                        dataSpacing = view.getFloat64(genParamsOffset + 24, true) * 1000; // تحويل كيلومتر إلى متر
-                        if (isNaN(dataSpacing) || dataSpacing <= 0) dataSpacing = 1.0;
-                    }
-                    
-                    const totalDistanceKm = (numPoints * dataSpacing) / 1000;
-                    
-                    // قراءة Data Points (قيم 2 بايت)
-                    let faultPointIndex = -1, maxDrop = 0;
-                    const dataStart = dataPtsOffset + 24;
-                    let prevVal = view.getInt16(dataStart, true) / 1000.0;
-                    for (let i = 1; i < numPoints; i++) {
-                        const off = dataStart + i*2;
-                        if (off+1 >= buffer.byteLength) break;
-                        const curVal = view.getInt16(off, true) / 1000.0;
-                        const drop = prevVal - curVal;
-                        if (drop > 0.5) { faultPointIndex = i; maxDrop = drop; break; }
-                        prevVal = curVal;
-                    }
-                    
-                    let faultDistance = faultPointIndex >= 0 ? (faultPointIndex * dataSpacing) / 1000 : totalDistanceKm;
-                    let eventType = 'break';
-                    if (maxDrop > 3.0) eventType = 'break';
-                    else if (maxDrop > 0.5 && maxDrop <= 1.5) eventType = 'bend';
-                    else if (maxDrop > 1.5) eventType = 'connector';
-                    
-                    // استخدام KeyEvents إن وجدت للتحقق
-                    if (keyEventsOffset !== -1) {
-                        // استخراج أول حدث لتأكيد المسافة والنوع (رمز مبسط)
-                    }
-                    
-                    document.getElementById('otdrInputType').value = 'distance';
-                    document.getElementById('otdrValue').value = faultDistance.toFixed(3);
-                    document.getElementById('otdrEventType').value = eventType;
-                    
-                    const info = document.getElementById('sorInfo');
-                    info.innerHTML = currentLang === 'ar' ?
-                        `✅ تحليل SOR ناجح | المسافة الكلية: ${totalDistanceKm.toFixed(3)} km | العطل عند: ${faultDistance.toFixed(3)} km` :
-                        `✅ Analyse SOR réussie | Distance totale: ${totalDistanceKm.toFixed(3)} km | Défaut à: ${faultDistance.toFixed(3)} km`;
-                    info.className = "mt-2 text-xs text-green-700 font-bold p-2 bg-green-50 rounded";
-                    info.classList.remove('hidden');
-                } catch (err) {
-                    document.getElementById('sorInfo').innerHTML = currentLang === 'ar' ? "❌ فشل تحليل ملف SOR" : "❌ Échec analyse SOR";
-                    document.getElementById('sorInfo').className = "mt-2 text-xs text-red-700 font-bold p-2 bg-red-50 rounded";
-                    document.getElementById('sorInfo').classList.remove('hidden');
-                }
-                event.target.value = '';
+            reader.onload = (e) => {
+                localStorage.setItem('atOptiLogo_custom', e.target.result);
+                showToast("تم حفظ الشعار محلياً للاستخدام في التقارير", "success");
             };
+            reader.readAsDataURL(file);
+        };
+
+        // =========================================================================
+        // 1. Input Validation Engine
+        // =========================================================================
+        function validateInputs() {
+            const tx = parseFloat(document.getElementById('txPower').value);
+            const length = parseFloat(document.getElementById('fiberLength').value);
+            const att = parseFloat(document.getElementById('attenuation').value);
+            const split = parseFloat(document.getElementById('splitterLoss').value);
+            const connQ = parseInt(document.getElementById('connQty').value, 10);
+            const connL = parseFloat(document.getElementById('connLoss').value);
+            const spliceQ = parseInt(document.getElementById('spliceQty').value, 10);
+            const spliceL = parseFloat(document.getElementById('spliceLoss').value);
+            const margin = parseFloat(document.getElementById('systemMargin').value);
+            const n = parseFloat(document.getElementById('refractiveIndex').value);
+            const otdrVal = parseFloat(document.getElementById('otdrValue').value);
+
+            if (isNaN(tx) || tx < -10 || tx > 15) return { valid: false, message: "قدرة الإرسال Tx غير واقعية (المجال الهندسي: -10 إلى +15 dBm)" };
+            if (isNaN(length) || length <= 0 || length > 120) return { valid: false, message: "طول الليف البصري يجب أن يكون موجباً وبما لا يتجاوز 120 km لشبكات GPON" };
+            if (isNaN(att) || att <= 0 || att > 2.0) return { valid: false, message: "معامل التوهين الكبلي غير صحيح هندسياً (0.15 - 2.0 dB/km)" };
+            if (isNaN(split) || split < 0 || split > 30) return { valid: false, message: "فقد المقسم يجب أن يكون بين 0 و 30 dB" };
+            if (isNaN(connQ) || connQ < 0 || isNaN(connL) || connL < 0) return { valid: false, message: "بيانات الموصلات غير صالحة" };
+            if (isNaN(spliceQ) || spliceQ < 0 || isNaN(spliceL) || spliceL < 0) return { valid: false, message: "بيانات نقاط اللحام غير صالحة" };
+            if (isNaN(margin) || margin < 0) return { valid: false, message: "هامش أمان النظام يجب ألا يكون سالباً" };
+            if (isNaN(n) || n < 1.40 || n > 1.60) return { valid: false, message: "معامل الانكسار n لليف السيليكا يجب أن يكون بين 1.40 و 1.60" };
+            if (!isNaN(otdrVal) && otdrVal < 0) return { valid: false, message: "قيمة قياس OTDR لا يمكن أن تكون سالبة" };
+
+            return { valid: true };
+        }
+
+        // =========================================================================
+        // 2. Optical Link Budget Calculation (Engineering Formula)
+        // =========================================================================
+        function calculateLinkBudget() {
+            const txPower = parseFloat(document.getElementById('txPower').value) || 0;
+            const fiberLength = parseFloat(document.getElementById('fiberLength').value) || 0;
+            const attenuation = parseFloat(document.getElementById('attenuation').value) || 0;
+            const splitterLoss = parseFloat(document.getElementById('splitterLoss').value) || 0;
+            const connQty = parseFloat(document.getElementById('connQty').value) || 0;
+            const connLoss = parseFloat(document.getElementById('connLoss').value) || 0;
+            const spliceQty = parseFloat(document.getElementById('spliceQty').value) || 0;
+            const spliceLoss = parseFloat(document.getElementById('spliceLoss').value) || 0;
+            const designMargin = parseFloat(document.getElementById('systemMargin').value) || 0;
+            const sensitivity = parseFloat(document.getElementById('sensitivityThreshold').value) || -28.0;
+
+            const fiberLoss = attenuation * fiberLength;
+            const totalConnLoss = connQty * connLoss;
+            const totalSpliceLoss = spliceQty * spliceLoss;
+
+            // Physical Loss (without design margin)
+            const totalCalculatedLoss = fiberLoss + splitterLoss + totalConnLoss + totalSpliceLoss;
+            
+            // Expected Physical Received Power
+            const expectedRx = txPower - totalCalculatedLoss;
+
+            const measuredRxRaw = document.getElementById('measuredRx').value;
+            const hasMeasuredRx = measuredRxRaw !== "" && !isNaN(parseFloat(measuredRxRaw));
+            const measuredRx = hasMeasuredRx ? parseFloat(measuredRxRaw) : null;
+
+            // Excess Optical Loss (difference between expected theoretical & measured)
+            const excessLoss = hasMeasuredRx ? (expectedRx - measuredRx) : 0;
+
+            // Available margin against receiver threshold
+            const availableMargin = hasMeasuredRx ? (measuredRx - sensitivity) : (expectedRx - sensitivity - designMargin);
+
+            // Optical Status
+            let linkStatus = 'NORMAL';
+            if (hasMeasuredRx) {
+                if (measuredRx <= -35 || measuredRx < sensitivity) {
+                    linkStatus = 'CRITICAL';
+                } else if (excessLoss > designMargin || measuredRx < (sensitivity + 2.0)) {
+                    linkStatus = 'WARNING';
+                }
+            } else {
+                if (expectedRx < sensitivity) {
+                    linkStatus = 'CRITICAL';
+                } else if ((expectedRx - designMargin) < sensitivity) {
+                    linkStatus = 'WARNING';
+                }
+            }
+
+            return {
+                txPower,
+                fiberLength,
+                attenuation,
+                splitterLoss,
+                totalConnLoss,
+                totalSpliceLoss,
+                totalCalculatedLoss,
+                expectedRx,
+                measuredRx,
+                hasMeasuredRx,
+                excessLoss,
+                availableMargin,
+                sensitivity,
+                designMargin,
+                linkStatus
+            };
+        }
+
+        // =========================================================================
+        // 3. OTDR Distance & Time-of-Flight (ToF) Calculation
+        // =========================================================================
+        function calculateOTDRDistance() {
+            const inputType = document.getElementById('otdrInputType').value;
+            const rawVal = parseFloat(document.getElementById('otdrValue').value);
+            const n = parseFloat(document.getElementById('refractiveIndex').value) || 1.4682;
+
+            if (isNaN(rawVal) || rawVal <= 0) {
+                return { distanceKm: 0, isValid: false };
+            }
+
+            let distanceKm = 0;
+            // Formula: d = (c * t) / (2 * n)
+            if (inputType === 'distance') {
+                distanceKm = rawVal;
+            } else if (inputType === 'time_us') {
+                // Time in microseconds (10^-6 s)
+                // c in km/s: (299792.458 * t * 1e-6) / (2 * n)
+                distanceKm = (SPEED_OF_LIGHT_KM_S * (rawVal * 1e-6)) / (2 * n);
+            } else if (inputType === 'time_ns') {
+                // Time in nanoseconds (10^-9 s)
+                distanceKm = (SPEED_OF_LIGHT_KM_S * (rawVal * 1e-9)) / (2 * n);
+            }
+
+            return { distanceKm, isValid: distanceKm > 0 };
+        }
+
+        // =========================================================================
+        // 4. Robust SOR (Telcordia / Bellcore SR-4731) Binary Parser
+        // =========================================================================
+        window.handleSORUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            showLoading("جاري تفكيك وتحليل شفرات ملف SOR الثنائي...");
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const buffer = e.target.result;
+                    const parsed = parseSORFile(buffer, file.name);
+                    currentParsedSOR = parsed;
+                    
+                    const statusBox = document.getElementById('sorStatusBox');
+                    const nameEl = document.getElementById('sorFileName');
+                    const badgeEl = document.getElementById('sorStatusBadge');
+                    const detailsEl = document.getElementById('sorDetails');
+                    
+                    statusBox.classList.remove('hidden');
+                    nameEl.innerText = window.escapeHTML(file.name);
+
+                    if (parsed.status === 'VALID' || parsed.status === 'PARTIAL') {
+                        badgeEl.className = parsed.status === 'VALID' ? "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800" : "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800";
+                        badgeEl.innerText = parsed.status;
+                        
+                        detailsEl.innerHTML = `
+                            <div>الطول الكلي للمسار: <b>${parsed.totalDistanceKm.toFixed(3)} km</b></div>
+                            <div>الحدث البارز المكتشف: <b>${parsed.detectedEventDistance.toFixed(3)} km</b> (Perte: ${parsed.eventLossDb.toFixed(2)} dB)</div>
+                            <div>نوع الحدث: <b>${parsed.detectedEventType}</b> (DataPoints: ${parsed.numPoints})</div>
+                        `;
+
+                        document.getElementById('otdrInputType').value = 'distance';
+                        document.getElementById('otdrValue').value = parsed.detectedEventDistance.toFixed(3);
+                        document.getElementById('otdrEventType').value = parsed.detectedEventType;
+                        if (parsed.wavelength) {
+                            const wlSelect = document.getElementById('wavelength');
+                            if (parsed.wavelength.includes('1310')) wlSelect.value = '1310';
+                            else if (parsed.wavelength.includes('1550')) wlSelect.value = '1550';
+                            else if (parsed.wavelength.includes('1490')) wlSelect.value = '1490';
+                        }
+                        showToast("تم استخراج بيانات SOR بنجاح وتحديث المتغيرات", "success");
+                    } else {
+                        badgeEl.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800";
+                        badgeEl.innerText = parsed.status;
+                        detailsEl.innerHTML = `<div class="text-rose-600">تعذر استخراج بيانات موثوقة من بنية ملف SOR.</div>`;
+                        showToast("ملف SOR غير مدعوم أو تالف", "error");
+                    }
+                } catch (err) {
+                    console.error("SOR Critical Parser Error:", err);
+                    showToast("خطأ غير متوقع أثناء معالجة ملف SOR", "error");
+                } finally {
+                    hideLoading();
+                    event.target.value = '';
+                }
+            };
+
+            reader.onerror = () => {
+                hideLoading();
+                showToast("فشل قراءة الملف من القرص", "error");
+            };
+
             reader.readAsArrayBuffer(file);
         };
 
-        function findBlock(name, bytes, max) {
-            const arr = new Uint8Array(bytes.buffer);
-            for (let i=0; i<max-4; i++) {
-                if (arr[i]===name.charCodeAt(0) && arr[i+1]===name.charCodeAt(1) && arr[i+2]===name.charCodeAt(2) && arr[i+3]===name.charCodeAt(3)) return i;
+        function parseSORFile(buffer, fileName) {
+            if (!buffer || buffer.byteLength < 64) {
+                return { status: 'INVALID', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
             }
-            return -1;
-        }
-        function readString(bytes, offset, len) {
-            return String.fromCharCode(...bytes.slice(offset, offset+len));
+
+            const view = new DataView(buffer);
+            const bytes = new Uint8Array(buffer);
+            const decoder = new TextDecoder('ascii');
+
+            try {
+                // Fast Block Discovery Scanner
+                const maxScan = Math.min(buffer.byteLength, 65536);
+                const headerText = decoder.decode(bytes.slice(0, maxScan));
+                
+                const dataPtsPos = headerText.indexOf('DataPts');
+                const fxdParamsPos = headerText.indexOf('FxdParams');
+                const genParamsPos = headerText.indexOf('GenParams');
+
+                if (dataPtsPos === -1) {
+                    return { status: 'UNSUPPORTED', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
+                }
+
+                // Parse Data Spacing from FxdParams block if available
+                let dataSpacingMeters = 1.0;
+                let extractedWavelength = null;
+                if (fxdParamsPos !== -1 && (fxdParamsPos + 40) < buffer.byteLength) {
+                    try {
+                        const rawSpacing = view.getInt32(fxdParamsPos + 32, true);
+                        if (rawSpacing > 0 && rawSpacing < 5000000) {
+                            dataSpacingMeters = rawSpacing / 10000.0;
+                        }
+                    } catch (e) {}
+                }
+
+                // Extract Number of Data Points
+                let numPoints = 0;
+                let dataArrayOffset = dataPtsPos + 24;
+                try {
+                    numPoints = view.getInt32(dataPtsPos + 14, true);
+                } catch (e) {}
+
+                if (numPoints <= 0 || numPoints > 500000 || (dataArrayOffset + numPoints * 2) > buffer.byteLength) {
+                    // Safe Fallback bounds calculation
+                    numPoints = Math.max(0, Math.floor((buffer.byteLength - dataArrayOffset) / 2));
+                }
+
+                if (numPoints < 10) {
+                    return { status: 'PARTIAL', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
+                }
+
+                // Read Point Array safely
+                const points = [];
+                for (let i = 0; i < numPoints; i++) {
+                    const offset = dataArrayOffset + (i * 2);
+                    if (offset + 1 >= buffer.byteLength) break;
+                    // Loss value in dB (scaled by 1000)
+                    points.push(view.getInt16(offset, true) / 1000.0);
+                }
+
+                // Event Detection Analysis
+                const eventResult = detectOTDREvents(points, dataSpacingMeters);
+                const totalDistanceKm = (points.length * dataSpacingMeters) / 1000.0;
+
+                return {
+                    status: (fxdParamsPos !== -1 && dataPtsPos !== -1) ? 'VALID' : 'PARTIAL',
+                    totalDistanceKm: totalDistanceKm,
+                    detectedEventDistance: eventResult.distanceKm,
+                    eventLossDb: eventResult.lossDb,
+                    detectedEventType: eventResult.eventType,
+                    numPoints: points.length,
+                    wavelength: extractedWavelength
+                };
+
+            } catch (err) {
+                console.warn("Graceful fallback on SOR parse failure:", err);
+                return { status: 'INVALID', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
+            }
         }
 
-        // =============== GIS محسّن ===============
-        function haversineDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371; // km
-            const dLat = (lat2-lat1)*Math.PI/180;
-            const dLon = (lon2-lon1)*Math.PI/180;
-            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        // =========================================================================
+        // 5. Advanced Event Detection & Classification
+        // =========================================================================
+        function detectOTDREvents(dataPoints, dataSpacingMeters) {
+            if (!dataPoints || dataPoints.length < 5) {
+                return { distanceKm: 0, lossDb: 0, eventType: 'break' };
+            }
+
+            let maxStepLoss = 0;
+            let peakReflection = 0;
+            let eventIndex = -1;
+            let eventType = 'break';
+
+            // Sliding window search for major slope transitions & steps
+            for (let i = 2; i < dataPoints.length - 2; i++) {
+                const prev = (dataPoints[i-1] + dataPoints[i-2]) / 2.0;
+                const next = (dataPoints[i+1] + dataPoints[i+2]) / 2.0;
+                const stepLoss = prev - next;
+                const localDiff = dataPoints[i] - prev;
+
+                // Check for reflective spike
+                if (localDiff > 0.8 && localDiff > peakReflection) {
+                    peakReflection = localDiff;
+                    eventIndex = i;
+                    eventType = 'connector';
+                }
+
+                // Check for dominant non-reflective drop
+                if (stepLoss > maxStepLoss && stepLoss > 0.35) {
+                    maxStepLoss = stepLoss;
+                    eventIndex = i;
+                    if (stepLoss > 3.5) eventType = 'break';
+                    else if (stepLoss > 1.2) eventType = 'bend';
+                    else eventType = 'splice';
+                }
+            }
+
+            if (eventIndex === -1) {
+                return {
+                    distanceKm: (dataPoints.length * dataSpacingMeters) / 1000.0,
+                    lossDb: 0,
+                    eventType: 'break'
+                };
+            }
+
+            return {
+                distanceKm: (eventIndex * dataSpacingMeters) / 1000.0,
+                lossDb: maxStepLoss > 0 ? maxStepLoss : peakReflection,
+                eventType: eventType
+            };
         }
 
-        function calculateFaultPoint(oltLat, oltLng, onuLat, onuLng, faultDist) {
-            const total = haversineDistance(oltLat, oltLng, onuLat, onuLng);
-            if (faultDist >= total || total === 0) return { lat: onuLat, lng: onuLng };
-            const ratio = faultDist / total;
-            const lat = oltLat + (onuLat - oltLat) * ratio;
-            const lng = oltLng + (onuLng - oltLng) * ratio;
-            return { lat, lng };
+        // =========================================================================
+        // 6. Multi-Factor Diagnostic Engine
+        // =========================================================================
+        function diagnoseFault(linkBudget, otdr, groundTruth) {
+            const { expectedRx, measuredRx, hasMeasuredRx, excessLoss, linkStatus, designMargin } = linkBudget;
+            const eventTypeInput = document.getElementById('otdrEventType').value;
+            const fiberLength = linkBudget.fiberLength;
+
+            let diagnosis = "Normal Link Operation";
+            let severity = "NORMAL";
+            let confidence = 85;
+            let recommendedAction = "No intervention required. Optical link parameters comply with standards.";
+
+            if (!hasMeasuredRx) {
+                diagnosis = "Theoretical Simulation Only (No Field Power)";
+                severity = "WARNING";
+                confidence = 60;
+                recommendedAction = "Connect optical power meter at customer ONU to measure real received power.";
+            } else if (linkStatus === 'CRITICAL' || measuredRx <= -30) {
+                severity = "CRITICAL";
+                if (otdr.isValid && otdr.distanceKm < (fiberLength * 0.95)) {
+                    diagnosis = "Probable Fiber Break / Complete Loss of Signal (LOS)";
+                    recommendedAction = `Dispatch splice team to inspect optical cable around PK ${otdr.distanceKm.toFixed(3)} km.`;
+                    confidence = 94;
+                } else {
+                    diagnosis = "Possible Fiber Disconnection or Terminal Break";
+                    recommendedAction = "Inspect ODF patch cords, pigtails, and ONU input connector before trench verification.";
+                    confidence = 88;
+                }
+            } else if (linkStatus === 'WARNING' || excessLoss > designMargin) {
+                severity = "WARNING";
+                if (eventTypeInput === 'bend' || (excessLoss > 1.5 && excessLoss < 4.0)) {
+                    diagnosis = "Suspected Macrobend or Cable Pinch";
+                    recommendedAction = `Inspect splice trays, fiber routing boxes, and service loops at approx ${otdr.isValid ? otdr.distanceKm.toFixed(3) + ' km' : 'PBO location'}.`;
+                    confidence = 89;
+                } else if (eventTypeInput === 'connector' || excessLoss <= 1.5) {
+                    diagnosis = "Suspected Connector Loss / End-face Contamination";
+                    recommendedAction = "Clean and inspect optical connectors with fiber scope (IEC 61300-3-35).";
+                    confidence = 86;
+                } else {
+                    diagnosis = "High Optical Loss / Degraded Splice";
+                    recommendedAction = "Perform bidirectional OTDR trace to pinpoint high-loss splice point.";
+                    confidence = 82;
+                }
+            } else {
+                diagnosis = "Optical Link Operating Normally";
+                severity = "NORMAL";
+                confidence = 96;
+                recommendedAction = "Parameters are within nominal GPON budget margin. Regular maintenance.";
+            }
+
+            return { diagnosis, severity, confidence, recommendedAction };
         }
 
-        function updateGISMap(faultDistance, totalOtdrDistance) {
-            const oltVal = document.getElementById('oltCoords').value.split(',');
-            const onuVal = document.getElementById('onuCoords').value.split(',');
-            const oltLat = parseFloat(oltVal[0]) || 27.6711, oltLng = parseFloat(oltVal[1]) || -8.1478;
+        // =========================================================================
+        // 7. Ground Truth & Accuracy Validation
+        // =========================================================================
+        function calculateGroundTruthError(estimatedDistKm, groundTruthDistKm) {
+            if (!groundTruthDistKm || groundTruthDistKm <= 0 || !estimatedDistKm || estimatedDistKm <= 0) {
+                return null;
+            }
+
+            const absErrorKm = Math.abs(estimatedDistKm - groundTruthDistKm);
+            const relErrorPercent = (absErrorKm / groundTruthDistKm) * 100.0;
+
+            let rating = "Poor (>10%)";
+            let color = "text-rose-600";
+            if (relErrorPercent < 1.0) {
+                rating = "Excellent (<1%)";
+                color = "text-emerald-600";
+            } else if (relErrorPercent <= 5.0) {
+                rating = "Good (1-5%)";
+                color = "text-blue-600";
+            } else if (relErrorPercent <= 10.0) {
+                rating = "Acceptable (5-10%)";
+                color = "text-amber-600";
+            }
+
+            return {
+                absErrorKm,
+                absErrorMeters: absErrorKm * 1000.0,
+                relErrorPercent,
+                rating,
+                color
+            };
+        }
+
+        // =========================================================================
+        // 8. Spatial Math & GIS Map Localization
+        // =========================================================================
+        function parseCoordinates(coordString, defaultCoords) {
+            if (!coordString) return defaultCoords;
+            const parts = coordString.split(',');
+            if (parts.length !== 2) return defaultCoords;
+            const lat = parseFloat(parts[0].trim());
+            const lng = parseFloat(parts[1].trim());
+            if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                return defaultCoords;
+            }
+            return [lat, lng];
+        }
+
+        function calculateFaultCoordinates(oltCoords, onuCoords, faultDistKm, totalFiberLenKm) {
+            if (!onuCoords || totalFiberLenKm <= 0 || faultDistKm <= 0) {
+                return { faultCoords: oltCoords, ratio: 0 };
+            }
+
+            // Ratio of fault distance along the OLT -> ONU spatial vector
+            const ratio = Math.min(1.05, Math.max(0.0, faultDistKm / totalFiberLenKm));
+            const faultLat = oltCoords[0] + ratio * (onuCoords[0] - oltCoords[0]);
+            const faultLng = oltCoords[1] + ratio * (onuCoords[1] - oltCoords[1]);
+
+            return {
+                faultCoords: [faultLat, faultLng],
+                ratio: ratio
+            };
+        }
+
+        function updateGISMap(oltCoords, onuCoords, faultDistKm, totalFiberLenKm) {
+            const mapContainer = document.getElementById('map');
+            if (!mapContainer) return;
+
+            const { faultCoords } = calculateFaultCoordinates(oltCoords, onuCoords, faultDistKm, totalFiberLenKm);
+            const remainingToOnu = Math.max(0, totalFiberLenKm - faultDistKm);
+
+            document.getElementById('mapOltDistDisplay').innerText = `${faultDistKm > 0 ? faultDistKm.toFixed(3) : '0.000'} km`;
+            document.getElementById('mapFaultDistDisplay').innerText = faultDistKm > 0 ? `${faultDistKm.toFixed(3)} km` : 'N/A';
+            document.getElementById('mapOnuDistDisplay').innerText = faultDistKm > 0 ? `${remainingToOnu.toFixed(3)} km` : 'N/A';
+            document.getElementById('gisFaultCoordsBadge').innerText = faultDistKm > 0 ? `Lat: ${faultCoords[0].toFixed(5)}, Lng: ${faultCoords[1].toFixed(5)}` : 'N/A';
+
             setTimeout(() => {
                 if (!map) {
-                    map = L.map('map').setView([oltLat, oltLng], 12);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                    map = L.map('map').setView(oltCoords, 13);
+                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '© OpenStreetMap'
+                    }).addTo(map);
                 }
-                // إزالة الطبقات القديمة
-                if(oltMarker) map.removeLayer(oltMarker);
-                if(onuMarker) map.removeLayer(onuMarker);
-                if(faultMarker) map.removeLayer(faultMarker);
-                if(networkLine) map.removeLayer(networkLine);
-                if(faultLineToOlt) map.removeLayer(faultLineToOlt);
-                if(faultLineToOnu) map.removeLayer(faultLineToOnu);
 
-                oltMarker = L.marker([oltLat, oltLng]).bindPopup("<b>OLT</b>").addTo(map);
-                
-                if(onuVal.length===2 && onuVal[0]!=="" && faultDistance>0) {
-                    const onuLat = parseFloat(onuVal[0]), onuLng = parseFloat(onuVal[1]);
-                    onuMarker = L.marker([onuLat, onuLng]).bindPopup("<b>ONU</b>").addTo(map);
-                    const faultPt = calculateFaultPoint(oltLat, oltLng, onuLat, onuLng, faultDistance);
-                    faultMarker = L.marker([faultPt.lat, faultPt.lng], {icon: L.icon({iconUrl:'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png', iconSize:[25,41]})}).bindPopup("🔴 موقع العطل المقدر").addTo(map);
-                    
-                    faultLineToOlt = L.polyline([[oltLat,oltLng], [faultPt.lat,faultPt.lng]], {color:'red', weight:3}).addTo(map);
-                    faultLineToOnu = L.polyline([[faultPt.lat,faultPt.lng], [onuLat,onuLng]], {color:'gray', weight:2, dashArray:'5,5'}).addTo(map);
-                    
-                    const group = L.featureGroup([oltMarker, onuMarker, faultMarker, faultLineToOlt, faultLineToOnu]);
-                    map.fitBounds(group.getBounds().pad(0.1));
-                } else {
-                    map.setView([oltLat, oltLng], 12);
+                // Clear previous layers
+                if (oltMarker) map.removeLayer(oltMarker);
+                if (onuMarker) map.removeLayer(onuMarker);
+                if (faultMarker) map.removeLayer(faultMarker);
+                if (faultZoneCircle) map.removeLayer(faultZoneCircle);
+                if (networkLine) map.removeLayer(networkLine);
+
+                // OLT Marker
+                oltMarker = L.marker(oltCoords).addTo(map).bindPopup(`
+                    <div class="text-xs">
+                        <b class="text-blue-700">المركز / OLT Node</b><br>
+                        الإحداثيات: ${oltCoords[0].toFixed(4)}, ${oltCoords[1].toFixed(4)}
+                    </div>
+                `);
+
+                const boundsGroup = [oltCoords];
+
+                // ONU Marker & Route
+                if (onuCoords) {
+                    onuMarker = L.marker(onuCoords).addTo(map).bindPopup(`
+                        <div class="text-xs">
+                            <b class="text-emerald-700">المشترك / ONU Client</b><br>
+                            الإحداثيات: ${onuCoords[0].toFixed(4)}, ${onuCoords[1].toFixed(4)}
+                        </div>
+                    `);
+                    boundsGroup.push(onuCoords);
+
+                    networkLine = L.polyline([oltCoords, onuCoords], {
+                        color: '#2563eb',
+                        weight: 4,
+                        opacity: 0.85,
+                        dashArray: '6, 6'
+                    }).addTo(map);
                 }
-            }, 300);
+
+                // Estimated Fault Location & Uncertainty Radius
+                if (faultDistKm > 0) {
+                    boundsGroup.push(faultCoords);
+
+                    faultMarker = L.circleMarker(faultCoords, {
+                        radius: 7,
+                        color: '#b91c1c',
+                        fillColor: '#ef4444',
+                        fillOpacity: 1
+                    }).addTo(map).bindPopup(`
+                        <div class="text-xs">
+                            <b class="text-red-700">موقع العطل المحتمل (Estimated Fault)</b><br>
+                            المسافة من OLT: <b>${faultDistKm.toFixed(3)} km</b><br>
+                            الإحداثيات: ${faultCoords[0].toFixed(5)}, ${faultCoords[1].toFixed(5)}
+                        </div>
+                    `);
+
+                    // Uncertainty Radius: 50m default engineering dispersion
+                    const uncertaintyMeters = Math.max(50, Math.min(250, faultDistKm * 20));
+                    faultZoneCircle = L.circle(faultCoords, {
+                        color: '#ef4444',
+                        fillColor: '#fca5a5',
+                        fillOpacity: 0.25,
+                        weight: 1.5,
+                        radius: uncertaintyMeters
+                    }).addTo(map);
+                }
+
+                map.invalidateSize();
+                if (boundsGroup.length > 1) {
+                    map.fitBounds(L.latLngBounds(boundsGroup), { padding: [40, 40] });
+                } else {
+                    map.setView(oltCoords, 13);
+                }
+            }, 250);
         }
 
-        // =============== التشخيص المتقدم ===============
+        // =========================================================================
+        // 9. Master Orchestrator: runDiagnostics()
+        // =========================================================================
         window.runDiagnostics = () => {
+            const validation = validateInputs();
+            if (!validation.valid) {
+                showToast(validation.message, "error");
+                return;
+            }
+
             saveLocalSettings();
-            const tx = parseFloat(document.getElementById('txPower').value) || 0;
-            const length = parseFloat(document.getElementById('fiberLength').value) || 0;
-            const att = parseFloat(document.getElementById('attenuation').value) || 0;
-            const splitLoss = parseFloat(document.getElementById('splitterLoss').value) || 0;
-            const connLossTotal = (parseFloat(document.getElementById('connQty').value)||0)*(parseFloat(document.getElementById('connLoss').value)||0);
-            const spliceLossTotal = (parseFloat(document.getElementById('spliceQty').value)||0)*(parseFloat(document.getElementById('spliceLoss').value)||0);
-            const margin = parseFloat(document.getElementById('systemMargin').value) || 0;
-            const sensitivity = parseFloat(document.getElementById('ontSensitivity').value) || -27;
 
-            const theoreticalRx = tx - (att*length) - splitLoss - connLossTotal - spliceLossTotal;
-            const expectedRx = theoreticalRx - margin;
-            const measuredRx = parseFloat(document.getElementById('measuredRx').value);
-            
-            let excessLoss = measuredRx ? expectedRx - measuredRx : 0;
-            let availableMargin = measuredRx ? (theoreticalRx - measuredRx) : margin;
-            
-            // استخراج مسافة OTDR
-            const otdrInputType = document.getElementById('otdrInputType').value;
-            const otdrValue = parseFloat(document.getElementById('otdrValue').value);
-            const n = parseFloat(document.getElementById('refractiveIndex').value)||1.4682;
-            const c = 299792.458;
-            let faultDistance = 0, totalOtdrDistance = 0;
-            if (!isNaN(otdrValue)) {
-                faultDistance = otdrInputType === 'time' ? (c * otdrValue * 1e-6)/(2*n) : otdrValue;
-            }
-            totalOtdrDistance = faultDistance; // من الممكن أن نضيف الطول الكلي من SOR لاحقاً
+            const linkBudget = calculateLinkBudget();
+            const otdr = calculateOTDRDistance();
+            const groundTruthVal = parseFloat(document.getElementById('groundTruth').value);
+            const groundTruthAnalysis = calculateGroundTruthError(otdr.distanceKm, groundTruthVal);
+            const diagResult = diagnoseFault(linkBudget, otdr, groundTruthAnalysis);
 
-            // حساب الخطأ المطلق
-            const gt = parseFloat(document.getElementById('groundTruth').value);
-            let absError = "N/A";
-            if (!isNaN(gt) && faultDistance > 0) absError = Math.abs(faultDistance - gt).toFixed(3) + " km";
+            const oltCoords = parseCoordinates(document.getElementById('oltCoords').value, [33.6831, 1.0193]);
+            const onuCoords = parseCoordinates(document.getElementById('onuCoords').value, [33.7120, 1.0450]);
 
-            // منطق التشخيص المبني على الأدلة
-            let diagnosis = currentLang === 'ar' ? "طبيعي" : "Normal";
-            let severity = "Normal", confidence = 90, evidence = [];
-            let alertClass = "bg-green-100 text-green-800 border-green-300";
-            
-            if (measuredRx) {
-                if (measuredRx <= sensitivity) {
-                    diagnosis = currentLang === 'ar' ? "انقطاع (LOS)" : "Coupure (LOS)";
-                    severity = "Critical";
-                    confidence = 98;
-                    evidence.push("Rx below sensitivity");
-                } else if (excessLoss > 1.5) {
-                    diagnosis = currentLang === 'ar' ? "فقد زائد" : "Perte Excédentaire";
-                    severity = "Warning";
-                    confidence = 80;
-                    evidence.push("Excess loss > 1.5 dB");
-                } else if (availableMargin < 1) {
-                    diagnosis = currentLang === 'ar' ? "هامش ضعيف" : "Marge Faible";
-                    severity = "Warning";
-                    confidence = 75;
-                    evidence.push("Low margin");
-                }
-                if (faultDistance > 0 && faultDistance < length + 2) {
-                    diagnosis += " + OTDR Event";
-                    confidence = Math.min(100, confidence + 10);
-                    evidence.push(`OTDR event at ${faultDistance.toFixed(2)} km`);
-                }
-                if (!isNaN(gt) && faultDistance > 0) {
-                    if (Math.abs(faultDistance - gt) < 0.05) {
-                        confidence = Math.min(100, confidence + 15);
-                        evidence.push("High localization accuracy");
-                    } else {
-                        confidence = Math.max(50, confidence - 10);
-                    }
-                }
-            }
-
-            alertClass = severity === 'Critical' ? "bg-red-100 text-red-800 border-red-300" : (severity === 'Warning' ? "bg-yellow-100 text-yellow-800 border-yellow-300" : "bg-green-100 text-green-800 border-green-300");
-
+            // Reveal and Populate Results UI
             document.getElementById('resultSection').classList.remove('hidden');
-            document.getElementById('resTheoRx').innerText = theoreticalRx.toFixed(2) + " dBm";
-            document.getElementById('resExpRx').innerText = expectedRx.toFixed(2) + " dBm";
-            document.getElementById('resMeasRx').innerText = measuredRx ? measuredRx.toFixed(2)+" dBm" : "N/A";
-            document.getElementById('resAvailMargin').innerText = measuredRx ? availableMargin.toFixed(2)+" dB" : "N/A";
-            document.getElementById('resExcessLoss').innerText = measuredRx ? excessLoss.toFixed(2)+" dB" : "N/A";
-            document.getElementById('confidenceDisplay').innerText = (currentLang==='ar'?'نسبة الثقة: ':'Confiance: ') + confidence + '%';
-            document.getElementById('diagnosisAlert').className = `p-3 rounded mt-2 border ${alertClass} font-bold`;
-            document.getElementById('diagnosisAlert').innerText = diagnosis;
-            document.getElementById('resOtdrDist').innerText = faultDistance ? faultDistance.toFixed(3)+" km" : "N/A";
-            document.getElementById('resTotalDist').innerText = totalOtdrDistance ? totalOtdrDistance.toFixed(3)+" km" : "N/A";
-            document.getElementById('resError').innerText = absError;
+
+            document.getElementById('reportTimestampDisplay').innerText = new Date().toLocaleString(currentLang === 'ar' ? 'ar-DZ' : 'fr-FR');
+            document.getElementById('resTxPower').innerText = `${linkBudget.txPower.toFixed(2)} dBm`;
+            document.getElementById('resTotalLoss').innerText = `${linkBudget.totalCalculatedLoss.toFixed(2)} dB`;
+            document.getElementById('resExpRx').innerText = `${linkBudget.expectedRx.toFixed(2)} dBm`;
+            document.getElementById('resMeasRx').innerText = linkBudget.hasMeasuredRx ? `${linkBudget.measuredRx.toFixed(2)} dBm` : "N/A";
             
-            updateGISMap(faultDistance, totalOtdrDistance);
+            const excessEl = document.getElementById('resExcessLoss');
+            excessEl.innerText = linkBudget.hasMeasuredRx ? `${linkBudget.excessLoss.toFixed(2)} dB` : "N/A";
+            excessEl.className = linkBudget.excessLoss > linkBudget.designMargin ? "font-bold font-mono text-rose-600" : "font-bold font-mono text-slate-800";
+
+            document.getElementById('resAvailableMargin').innerText = `${linkBudget.availableMargin.toFixed(2)} dB`;
+            document.getElementById('resOtdrDist').innerText = otdr.isValid ? `${otdr.distanceKm.toFixed(3)} km` : "N/A";
+
+            // Diagnosis Box Elements
+            document.getElementById('diagTitle').innerText = diagResult.diagnosis;
+            document.getElementById('diagRecommendation').innerText = diagResult.recommendedAction;
+            
+            const diagBox = document.getElementById('diagnosisBox');
+            const severityPill = document.getElementById('severityPill');
+            const confidencePill = document.getElementById('confidencePill');
+
+            severityPill.innerText = diagResult.severity;
+            confidencePill.innerText = `Confidence: ${diagResult.confidence}%`;
+
+            if (diagResult.severity === 'CRITICAL') {
+                diagBox.className = "p-4 rounded-xl border space-y-2 bg-rose-50 border-rose-300";
+                severityPill.className = "text-xs px-3 py-1 rounded-full font-bold bg-rose-600 text-white";
+                document.getElementById('diagIcon').innerText = "🚨";
+                document.getElementById('diagExplanation').innerText = "تم رصد هبوط حاد في القدرة أو انقطاع فيزيائي للإشارة يتجاوز حدود الحساسية المعيارية.";
+            } else if (diagResult.severity === 'WARNING') {
+                diagBox.className = "p-4 rounded-xl border space-y-2 bg-amber-50 border-amber-300";
+                severityPill.className = "text-xs px-3 py-1 rounded-full font-bold bg-amber-500 text-white";
+                document.getElementById('diagIcon').innerText = "⚠️";
+                document.getElementById('diagExplanation').innerText = "الوصلة تعمل لكن يوجد فقد زائد يتجاوز هامش الأمان الهندسي المسموح به.";
+            } else {
+                diagBox.className = "p-4 rounded-xl border space-y-2 bg-emerald-50 border-emerald-300";
+                severityPill.className = "text-xs px-3 py-1 rounded-full font-bold bg-emerald-600 text-white";
+                document.getElementById('diagIcon').innerText = "✅";
+                document.getElementById('diagExplanation').innerText = "جميع القياسات الضوئية وهامش الأمان مطابقة للمواصفات المعيارية المعتمدة.";
+            }
+
+            // Ground Truth UI
+            const gtCard = document.getElementById('groundTruthCard');
+            if (groundTruthAnalysis) {
+                gtCard.classList.remove('hidden');
+                document.getElementById('gtAbsError').innerText = `${groundTruthAnalysis.absErrorMeters.toFixed(1)} m (${groundTruthAnalysis.absErrorKm.toFixed(3)} km)`;
+                document.getElementById('gtRelError').innerText = `${groundTruthAnalysis.relErrorPercent.toFixed(2)} %`;
+                const ratingEl = document.getElementById('gtAccuracyRating');
+                ratingEl.innerText = groundTruthAnalysis.rating;
+                ratingEl.className = `font-bold ${groundTruthAnalysis.color}`;
+            } else {
+                gtCard.classList.add('hidden');
+            }
+
+            // Update Map
+            updateGISMap(oltCoords, onuCoords, otdr.distanceKm, linkBudget.fiberLength);
+
+            // Store Snapshot for PDF & GMAO
+            const centerSelect = document.getElementById('atCenter');
+            const centerName = centerSelect.options[centerSelect.selectedIndex].text;
 
             reportDataStore = {
-                timestamp: new Date().toLocaleString(),
-                diagnosis, severity, confidence, evidence: evidence.join(', '),
-                theoreticalRx: theoreticalRx.toFixed(2),
-                expectedRx: expectedRx.toFixed(2),
-                measuredRx: measuredRx ? measuredRx.toFixed(2) : "N/A",
-                excessLoss: measuredRx ? excessLoss.toFixed(2) : "N/A",
-                otdrDistance: faultDistance ? faultDistance.toFixed(3) : "N/A",
-                totalOtdrDistance: totalOtdrDistance ? totalOtdrDistance.toFixed(3) : "N/A",
-                absError,
-                status: "New"
+                timestamp: new Date().toISOString(),
+                centerName: centerName,
+                techName: document.getElementById('techName').value || 'Technicien AT',
+                notes: document.getElementById('techNotes').value || '',
+                wavelength: document.getElementById('wavelength').value,
+                gponClass: document.getElementById('gponProfile').value,
+                txPower: linkBudget.txPower.toFixed(2),
+                fiberLength: linkBudget.fiberLength.toFixed(2),
+                totalLoss: linkBudget.totalCalculatedLoss.toFixed(2),
+                expectedRx: linkBudget.expectedRx.toFixed(2),
+                measuredRx: linkBudget.hasMeasuredRx ? linkBudget.measuredRx.toFixed(2) : "N/A",
+                excessLoss: linkBudget.hasMeasuredRx ? linkBudget.excessLoss.toFixed(2) : "0.00",
+                availableMargin: linkBudget.availableMargin.toFixed(2),
+                otdrDistance: otdr.isValid ? otdr.distanceKm.toFixed(3) : "N/A",
+                diagnosis: diagResult.diagnosis,
+                severity: diagResult.severity,
+                confidence: diagResult.confidence,
+                recommendedAction: diagResult.recommendedAction,
+                groundTruthAnalysis: groundTruthAnalysis
             };
 
-            if(window.sendToGMAO && measuredRx) window.sendToGMAO(reportDataStore);
+            // Automatic Sync with GMAO if Firebase is connected
+            if (window.saveReportToFirebase && linkBudget.hasMeasuredRx) {
+                window.saveReportToFirebase(reportDataStore);
+            }
+
+            showToast("اكتمل التشخيص الهندسي وتحديث الخريطة بنجاح", "success");
         };
 
-        window.saveLogoToLocal = (event) => {
-            const file = event.target.files[0];
-            if(file) {
-                const reader = new FileReader();
-                reader.onload = (e) => localStorage.setItem('atLogo', e.target.result);
-                reader.readAsDataURL(file);
+        // =========================================================================
+        // 10. Official Engineering PDF Report Generator (jsPDF)
+        // =========================================================================
+        window.generatePDFReport = () => {
+            if (!reportDataStore.timestamp) {
+                showToast("يرجى تشغيل التشخيص أولاً قبل استخراج التقرير", "warning");
+                return;
+            }
+
+            showLoading("جاري إنشاء وثيقة PDF الهندسية...");
+            try {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({
+                    orientation: 'portrait',
+                    unit: 'mm',
+                    format: 'a4'
+                });
+
+                // Custom Organization Logo if available
+                const customLogo = localStorage.getItem('atOptiLogo_custom');
+                if (customLogo) {
+                    try {
+                        doc.addImage(customLogo, 'PNG', 165, 12, 30, 18);
+                    } catch (e) {}
+                }
+
+                // Official Header
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(16);
+                doc.setTextColor(30, 58, 138); // Blue 900
+                doc.text("ALGÉRIE TÉLÉCOM", 15, 20);
+
+                doc.setFontSize(11);
+                doc.setTextColor(71, 85, 105);
+                doc.text("Direction Technique - Plateforme AT-OptiSmart Pro V2", 15, 26);
+                doc.text("RAPPORT OFFICIEL D'EXPERTISE TECHNIQUE FTTH/GPON", 15, 32);
+
+                doc.setDrawColor(203, 213, 225);
+                doc.setLineWidth(0.5);
+                doc.line(15, 36, 195, 36);
+
+                // Metadata Box
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(30, 41, 59);
+
+                doc.text(`Date & Heure: ${new Date(reportDataStore.timestamp).toLocaleString('fr-FR')}`, 15, 43);
+                doc.text(`Centre Technique: ${reportDataStore.centerName}`, 15, 49);
+                doc.text(`Technicien Responsable: ${reportDataStore.techName}`, 120, 43);
+                doc.text(`Profil GPON: ${reportDataStore.gponClass} (${reportDataStore.wavelength} nm)`, 120, 49);
+
+                // Section 1: Optical Budget
+                doc.setFillColor(241, 245, 249);
+                doc.rect(15, 54, 180, 7, 'F');
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(10);
+                doc.setTextColor(15, 23, 42);
+                doc.text("1. BILAN DE LIAISON OPTIQUE ET MESURES PHYSIQUES", 18, 59);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9);
+                doc.text(`Longueur de Fibre: ${reportDataStore.fiberLength} km`, 20, 68);
+                doc.text(`Puissance d'Émission Tx: ${reportDataStore.txPower} dBm`, 20, 74);
+                doc.text(`Atténuation Totale Calculée: ${reportDataStore.totalLoss} dB`, 20, 80);
+
+                doc.text(`Puissance Reçue Attendue (Expected Rx): ${reportDataStore.expectedRx} dBm`, 110, 68);
+                doc.text(`Puissance Reçue Mesurée (Measured Rx): ${reportDataStore.measuredRx} dBm`, 110, 74);
+                doc.text(`Perte Excédentaire (Excess Loss): ${reportDataStore.excessLoss} dB`, 110, 80);
+                doc.text(`Marge Disponible (Available Margin): ${reportDataStore.availableMargin} dB`, 110, 86);
+
+                // Section 2: Diagnosis & OTDR
+                doc.setFillColor(241, 245, 249);
+                doc.rect(15, 93, 180, 7, 'F');
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(10);
+                doc.text("2. DIAGNOSTIC RÉFLECTOMÉTRIQUE ET LOCALISATION (OTDR)", 18, 98);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(9);
+                doc.text(`Diagnostic Émis: ${reportDataStore.diagnosis}`, 20, 107);
+                doc.text(`Sévérité: ${reportDataStore.severity} (Indice de Confiance: ${reportDataStore.confidence}%)`, 20, 113);
+                doc.text(`Distance Défaut Estimée (OTDR): ${reportDataStore.otdrDistance} km`, 20, 119);
+
+                doc.setFont("helvetica", "bold");
+                doc.text(`Action Recommandée:`, 20, 126);
+                doc.setFont("helvetica", "normal");
+                doc.text(reportDataStore.recommendedAction, 20, 131, { maxWidth: 170 });
+
+                // Section 3: Ground Truth
+                let yOffset = 143;
+                if (reportDataStore.groundTruthAnalysis) {
+                    doc.setFillColor(241, 245, 249);
+                    doc.rect(15, yOffset, 180, 7, 'F');
+                    doc.setFont("helvetica", "bold");
+                    doc.setFontSize(10);
+                    doc.text("3. VALIDATION DE PRÉCISION (GROUND TRUTH)", 18, yOffset + 5);
+
+                    doc.setFont("helvetica", "normal");
+                    doc.setFontSize(9);
+                    doc.text(`Erreur Absolue: ${reportDataStore.groundTruthAnalysis.absErrorMeters.toFixed(1)} mètres`, 20, yOffset + 14);
+                    doc.text(`Erreur Relative: ${reportDataStore.groundTruthAnalysis.relErrorPercent.toFixed(2)} %`, 110, yOffset + 14);
+                    doc.text(`Classification de Précision: ${reportDataStore.groundTruthAnalysis.rating}`, 20, yOffset + 20);
+                    yOffset += 28;
+                }
+
+                // Notes
+                if (reportDataStore.notes) {
+                    doc.setFont("helvetica", "bold");
+                    doc.text("Observations Terrain:", 15, yOffset);
+                    doc.setFont("helvetica", "italic");
+                    doc.text(`"${reportDataStore.notes}"`, 15, yOffset + 6, { maxWidth: 180 });
+                    yOffset += 16;
+                }
+
+                // Signatures
+                doc.setDrawColor(203, 213, 225);
+                doc.line(15, yOffset + 10, 195, yOffset + 10);
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(9);
+                doc.text("Visa et Signature du Technicien:", 25, yOffset + 20);
+                doc.text("Cachet et Visa du Superviseur:", 120, yOffset + 20);
+                
+                doc.setFont("helvetica", "normal");
+                doc.text("____________________________", 25, yOffset + 35);
+                doc.text("____________________________", 120, yOffset + 35);
+
+                // Footer
+                doc.setFontSize(8);
+                doc.setTextColor(148, 163, 184);
+                doc.text("Document généré automatiquement par la plateforme AT-OptiSmart Pro V2 - Algérie Télécom", 15, 287);
+
+                doc.save(`AT_Expertise_FTTH_${Date.now()}.pdf`);
+                showToast("تم تصدير تقرير PDF بنجاح", "success");
+            } catch (err) {
+                console.error("PDF Generation error:", err);
+                showToast("فشل إنشاء ملف PDF", "error");
+            } finally {
+                hideLoading();
             }
         };
-
-        window.generatePDFReport = () => {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const logo = localStorage.getItem('atLogo');
-            if(logo) doc.addImage(logo, 'PNG', 160, 10, 30, 30);
-            doc.setFontSize(18);
-            doc.text("Algérie Télécom - Rapport de Diagnostic FTTH/GPON", 15, 25);
-            doc.setFontSize(11);
-            doc.text(`Date: ${reportDataStore.timestamp}`, 15, 35);
-            doc.text(`Technicien: ${document.getElementById('techName').value || 'N/A'}`, 15, 42);
-            doc.setFontSize(14);
-            doc.text("1. Bilan Optique", 15, 55);
-            doc.setFontSize(11);
-            doc.text(`Rx Théorique (sans marge): ${reportDataStore.theoreticalRx} dBm`, 20, 65);
-            doc.text(`Rx Attendu (avec marge): ${reportDataStore.expectedRx} dBm`, 20, 72);
-            doc.text(`Rx Mesuré: ${reportDataStore.measuredRx} dBm`, 20, 79);
-            doc.text(`Perte Excédentaire: ${reportDataStore.excessLoss} dB`, 20, 86);
-            doc.setFontSize(14);
-            doc.text("2. Diagnostic Intelligent", 15, 100);
-            doc.setFontSize(11);
-            doc.text(`Diagnostic: ${reportDataStore.diagnosis} (${reportDataStore.severity})`, 20, 110);
-            doc.text(`Confiance: ${reportDataStore.confidence}%`, 20, 117);
-            doc.text(`Evidence: ${reportDataStore.evidence}`, 20, 124);
-            doc.text(`Distance Défaut (OTDR): ${reportDataStore.otdrDistance} km`, 20, 131);
-            doc.text(`Erreur Absolue: ${reportDataStore.absError}`, 20, 138);
-            doc.text(`Notes: ${document.getElementById('techNotes').value || '-'}`, 15, 150);
-            doc.setFontSize(12);
-            doc.text("Signature:", 15, 165);
-            doc.text("_______________________", 15, 175);
-            doc.setFontSize(9);
-            doc.text("Généré par AT-OptiSmart Pro V3", 15, 280);
-            doc.save(`AT_Rapport_${Date.now()}.pdf`);
-        };
     </script>
+
+    <!-- 
+    ============================================================================
+    PRODUCTION FIREBASE SECURITY RULES (Realtime Database & Cloud Storage)
+    ============================================================================
+    Instructions: Copy the rules below and paste them into your Firebase Console.
+
+    1. Firebase Realtime Database Rules:
+    ----------------------------------------------------------------------------
+    {
+      "rules": {
+        "users": {
+          "$uid": {
+            ".read": "auth != null",
+            ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+          }
+        },
+        "gmao_reports_v2": {
+          ".read": "auth != null",
+          ".indexOn": ["status", "severity", "createdAt", "createdByUid"],
+          "$report_id": {
+            // Technicians, Supervisors and Admins can create reports
+            ".write": "auth != null && (!data.exists() || root.child('users').child(auth.uid).child('role').val() === 'supervisor' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+            ".validate": "newData.hasChildren(['diagnosis', 'status', 'createdAt', 'createdByUid']) &&
+                          (newData.child('status').val() === 'NEW' || 
+                           newData.child('status').val() === 'IN PROGRESS' || 
+                           newData.child('status').val() === 'VERIFIED' || 
+                           newData.child('status').val() === 'DONE' || 
+                           newData.child('status').val() === 'REJECTED')"
+          }
+        }
+      }
+    }
+
+    2. Firebase Storage Security Rules:
+    ----------------------------------------------------------------------------
+    rules_version = '2';
+    service firebase.storage {
+      match /b/{bucket}/o {
+        match /field_photos/{userId}/{fileName} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null 
+                       && request.auth.uid == userId
+                       && request.resource.size < 5 * 1024 * 1024
+                       && request.resource.contentType.matches('image/.*');
+        }
+      }
+    }
+    ============================================================================
+    -->
 </body>
 </html>
