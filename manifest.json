@@ -1,9 +1,20 @@
 {
-  "name": "AT-GeoFiber Pro",
-  "short_name": "GeoFiber",
+  "name": "AT-GeoFiber Pro - FTTH Field Diagnostics",
+  "short_name": "GeoFiber Pro",
+  "description": "نظام تشخيص أعطال الألياف البصرية FTTH/GPON - منصة اتصالات الجزائر",
   "start_url": "./index.html",
+  "scope": ".",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
-  "orientation": "portrait"
+  "orientation": "any",
+  "background_color": "#f1f5f9",
+  "theme_color": "#1e3a8a",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>",
+      "sizes": "100x100",
+      "type": "image/svg+xml"
+    }
+  ]
 }
