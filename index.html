@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AT-GeoFiber Pro - FTTH/GPON Diagnostic & Decision Support Platform</title>
-    <link rel="manifest" href="./manifest.json">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -15,6 +15,11 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#1e3a8a" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📡</text></svg>" />
+
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap');
         body { 
@@ -274,10 +279,17 @@
                         <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
                             <span>📡</span> <span data-i18n="mod2_title">2. بيانات وتحليل جهاز OTDR</span>
                         </h2>
-                        <label class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs px-2.5 py-1.5 rounded-lg cursor-pointer font-bold transition shadow-sm flex items-center gap-1">
-                            <span data-i18n="upload_sor">📁 استيراد ملف SOR</span>
-                            <input type="file" id="sorFileInput" accept=".sor,.SOR" class="hidden" onchange="handleSORUpload(event)">
-                        </label>
+                        <div class="flex items-center gap-2">
+                            <!-- زر تحميل بيانات OTDR تجريبية -->
+                            <button type="button" onclick="loadDemoOTDR()" 
+                                    class="bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-xs px-3 py-1.5 rounded-lg font-bold transition shadow-sm flex items-center gap-1.5">
+                                <span>⚡</span> <span>بيانات تجريبية</span>
+                            </button>
+                            <label class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs px-2.5 py-1.5 rounded-lg cursor-pointer font-bold transition shadow-sm flex items-center gap-1">
+                                <span data-i18n="upload_sor">📁 استيراد ملف SOR</span>
+                                <input type="file" id="sorFileInput" accept=".sor,.SOR" class="hidden" onchange="handleSORUpload(event)">
+                            </label>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3 mb-3">
@@ -530,9 +542,6 @@
         import { getDatabase, ref, push, onValue, update, get, remove, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-        // Configuration Note: In standard client-side Firebase architectures, the API Key
-        // is an identifier, not a secret authorization token. Real security is enforced via
-        // Firebase Authentication and Server-Side Security Rules (detailed below).
         const firebaseConfig = {
             apiKey: "AIzaSyCDYxvfYYDRBbqMj4zzMj05GdGk5n4VCmY",
             authDomain: "at-optismart.firebaseapp.com",
@@ -551,6 +560,55 @@
         let currentUserName = '';
         let gmaoListenerRef = null;
         let cachedGmaoReports = [];
+
+        // PWA / Offline Support: Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => console.log('SW registered: ', registration.scope))
+                    .catch(err => console.log('SW registration failed: ', err));
+            });
+        }
+
+        // Offline Report Queue & Sync
+        const OFFLINE_QUEUE_KEY = 'at_geofiber_offline_queue';
+
+        function getOfflineQueue() {
+            const stored = localStorage.getItem(OFFLINE_QUEUE_KEY);
+            return stored ? JSON.parse(stored) : [];
+        }
+
+        function saveOfflineQueue(queue) {
+            localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+        }
+
+        async function processOfflineQueue() {
+            if (!navigator.onLine || !currentUser) return;
+            const queue = getOfflineQueue();
+            if (queue.length === 0) return;
+            window.showToast("جاري مزامنة التقارير المحفوظة محلياً...", "info");
+            const newQueue = [];
+            for (const item of queue) {
+                try {
+                    await push(ref(database, 'gmao_reports_v2'), item.payload);
+                } catch (e) {
+                    newQueue.push(item);
+                }
+            }
+            saveOfflineQueue(newQueue);
+            if (newQueue.length < queue.length) {
+                window.showToast("تمت مزامنة بعض التقارير بنجاح", "success");
+            }
+        }
+
+        window.addEventListener('online', () => {
+            window.showToast("تمت استعادة الاتصال بالإنترنت", "success");
+            processOfflineQueue();
+        });
+
+        window.addEventListener('offline', () => {
+            window.showToast("أنت حالياً غير متصل بالإنترنت. سيتم حفظ البيانات محلياً.", "warning");
+        });
 
         // Expose Firebase Operations to Global Scope
         window.loginUser = async () => {
@@ -615,6 +673,7 @@
                 document.getElementById('techName').value = currentUserName;
                 
                 initGMAOListener();
+                processOfflineQueue();
             } else {
                 currentUser = null;
                 document.getElementById('authSection').classList.remove('hidden');
@@ -628,10 +687,17 @@
             const file = fileInput.files[0];
             if (!file) return null;
 
-            // Enforce file size limit (< 5MB)
             if (file.size > 5 * 1024 * 1024) {
                 window.showToast("حجم الصورة يتجاوز 5 ميغابايت", "error");
                 return null;
+            }
+
+            if (!navigator.onLine) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(file);
+                });
             }
 
             const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -642,7 +708,7 @@
             return await getDownloadURL(imgRef);
         }
 
-        // Save Report to Firebase RTDB
+        // Save Report to Firebase RTDB (with offline fallback)
         window.saveReportToFirebase = async (data) => {
             if (!currentUser) return;
             
@@ -672,8 +738,15 @@
                     }]
                 };
 
-                await push(ref(database, 'gmao_reports_v2'), reportPayload);
-                window.showToast(window.currentLang === 'ar' ? "تم إرسال تذكرة الصيانة بنجاح إلى GMAO" : "Ticket GMAO enregistré avec succès", "success");
+                if (navigator.onLine) {
+                    await push(ref(database, 'gmao_reports_v2'), reportPayload);
+                    window.showToast(window.currentLang === 'ar' ? "تم إرسال تذكرة الصيانة بنجاح إلى GMAO" : "Ticket GMAO enregistré avec succès", "success");
+                } else {
+                    const queue = getOfflineQueue();
+                    queue.push({ payload: reportPayload, timestamp: Date.now() });
+                    saveOfflineQueue(queue);
+                    window.showToast("تم حفظ التقرير محلياً وسيتم رفعه عند الاتصال بالإنترنت", "warning");
+                }
             } catch (err) {
                 console.error("GMAO Save Error:", err);
                 window.showToast("خطأ في حفظ التقرير بقاعدة البيانات", "error");
@@ -755,7 +828,6 @@
                     Object.entries(data).forEach(([key, val]) => {
                         cachedGmaoReports.push({ id: key, ...val });
                     });
-                    // Sort descending by creation date
                     cachedGmaoReports.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
                 }
                 renderGMAOList(cachedGmaoReports);
@@ -1087,7 +1159,6 @@
             const sel = document.getElementById('atCenter');
             if (sel.value !== 'custom') {
                 document.getElementById('oltCoords').value = sel.value;
-                // Generate a nearby ONU location for realistic demo
                 const parts = sel.value.split(',');
                 const lat = parseFloat(parts[0]);
                 const lng = parseFloat(parts[1]);
@@ -1105,7 +1176,6 @@
         window.onWavelengthChange = () => {
             const wl = document.getElementById('wavelength').value;
             const att = document.getElementById('attenuation');
-            // Engineering defaults: G.652D singlemode fiber attenuation spectrum
             if (wl === '1310') att.value = "0.35";
             else if (wl === '1490') att.value = "0.25";
             else if (wl === '1550') att.value = "0.20";
@@ -1129,7 +1199,7 @@
             document.getElementById('txPower').value = "3.0";
             document.getElementById('fiberLength').value = "5.20";
             document.getElementById('attenuation').value = "0.25";
-            document.getElementById('splitterLoss').value = "13.5"; // Configurable 1:16 engineering default
+            document.getElementById('splitterLoss').value = "13.5";
             document.getElementById('connQty').value = "2";
             document.getElementById('connLoss').value = "0.30";
             document.getElementById('spliceQty').value = "4";
@@ -1157,6 +1227,18 @@
                 showToast("تم حفظ الشعار محلياً للاستخدام في التقارير", "success");
             };
             reader.readAsDataURL(file);
+        };
+
+        // =========================================================================
+        // NEW: Load Demo OTDR Data
+        // =========================================================================
+        window.loadDemoOTDR = function() {
+            document.getElementById('otdrInputType').value = 'distance';
+            document.getElementById('otdrValue').value = '3.450';
+            document.getElementById('refractiveIndex').value = '1.4682';
+            document.getElementById('otdrEventType').value = 'bend';
+            document.getElementById('groundTruth').value = '3.440';
+            showToast("تم تحميل بيانات OTDR التجريبية (Macrobend عند 3.45 km)", "success");
         };
 
         // =========================================================================
@@ -1207,23 +1289,18 @@
             const totalConnLoss = connQty * connLoss;
             const totalSpliceLoss = spliceQty * spliceLoss;
 
-            // Physical Loss (without design margin)
             const totalCalculatedLoss = fiberLoss + splitterLoss + totalConnLoss + totalSpliceLoss;
             
-            // Expected Physical Received Power
             const expectedRx = txPower - totalCalculatedLoss;
 
             const measuredRxRaw = document.getElementById('measuredRx').value;
             const hasMeasuredRx = measuredRxRaw !== "" && !isNaN(parseFloat(measuredRxRaw));
             const measuredRx = hasMeasuredRx ? parseFloat(measuredRxRaw) : null;
 
-            // Excess Optical Loss (difference between expected theoretical & measured)
             const excessLoss = hasMeasuredRx ? (expectedRx - measuredRx) : 0;
 
-            // Available margin against receiver threshold
             const availableMargin = hasMeasuredRx ? (measuredRx - sensitivity) : (expectedRx - sensitivity - designMargin);
 
-            // Optical Status
             let linkStatus = 'NORMAL';
             if (hasMeasuredRx) {
                 if (measuredRx <= -35 || measuredRx < sensitivity) {
@@ -1271,15 +1348,11 @@
             }
 
             let distanceKm = 0;
-            // Formula: d = (c * t) / (2 * n)
             if (inputType === 'distance') {
                 distanceKm = rawVal;
             } else if (inputType === 'time_us') {
-                // Time in microseconds (10^-6 s)
-                // c in km/s: (299792.458 * t * 1e-6) / (2 * n)
                 distanceKm = (SPEED_OF_LIGHT_KM_S * (rawVal * 1e-6)) / (2 * n);
             } else if (inputType === 'time_ns') {
-                // Time in nanoseconds (10^-9 s)
                 distanceKm = (SPEED_OF_LIGHT_KM_S * (rawVal * 1e-9)) / (2 * n);
             }
 
@@ -1363,7 +1436,6 @@
             const decoder = new TextDecoder('ascii');
 
             try {
-                // Fast Block Discovery Scanner
                 const maxScan = Math.min(buffer.byteLength, 65536);
                 const headerText = decoder.decode(bytes.slice(0, maxScan));
                 
@@ -1375,7 +1447,6 @@
                     return { status: 'UNSUPPORTED', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
                 }
 
-                // Parse Data Spacing from FxdParams block if available
                 let dataSpacingMeters = 1.0;
                 let extractedWavelength = null;
                 if (fxdParamsPos !== -1 && (fxdParamsPos + 40) < buffer.byteLength) {
@@ -1387,7 +1458,6 @@
                     } catch (e) {}
                 }
 
-                // Extract Number of Data Points
                 let numPoints = 0;
                 let dataArrayOffset = dataPtsPos + 24;
                 try {
@@ -1395,7 +1465,6 @@
                 } catch (e) {}
 
                 if (numPoints <= 0 || numPoints > 500000 || (dataArrayOffset + numPoints * 2) > buffer.byteLength) {
-                    // Safe Fallback bounds calculation
                     numPoints = Math.max(0, Math.floor((buffer.byteLength - dataArrayOffset) / 2));
                 }
 
@@ -1403,16 +1472,13 @@
                     return { status: 'PARTIAL', totalDistanceKm: 0, detectedEventDistance: 0, eventLossDb: 0, detectedEventType: 'break', numPoints: 0 };
                 }
 
-                // Read Point Array safely
                 const points = [];
                 for (let i = 0; i < numPoints; i++) {
                     const offset = dataArrayOffset + (i * 2);
                     if (offset + 1 >= buffer.byteLength) break;
-                    // Loss value in dB (scaled by 1000)
                     points.push(view.getInt16(offset, true) / 1000.0);
                 }
 
-                // Event Detection Analysis
                 const eventResult = detectOTDREvents(points, dataSpacingMeters);
                 const totalDistanceKm = (points.length * dataSpacingMeters) / 1000.0;
 
@@ -1445,21 +1511,18 @@
             let eventIndex = -1;
             let eventType = 'break';
 
-            // Sliding window search for major slope transitions & steps
             for (let i = 2; i < dataPoints.length - 2; i++) {
                 const prev = (dataPoints[i-1] + dataPoints[i-2]) / 2.0;
                 const next = (dataPoints[i+1] + dataPoints[i+2]) / 2.0;
                 const stepLoss = prev - next;
                 const localDiff = dataPoints[i] - prev;
 
-                // Check for reflective spike
                 if (localDiff > 0.8 && localDiff > peakReflection) {
                     peakReflection = localDiff;
                     eventIndex = i;
                     eventType = 'connector';
                 }
 
-                // Check for dominant non-reflective drop
                 if (stepLoss > maxStepLoss && stepLoss > 0.35) {
                     maxStepLoss = stepLoss;
                     eventIndex = i;
@@ -1591,7 +1654,6 @@
                 return { faultCoords: oltCoords, ratio: 0 };
             }
 
-            // Ratio of fault distance along the OLT -> ONU spatial vector
             const ratio = Math.min(1.05, Math.max(0.0, faultDistKm / totalFiberLenKm));
             const faultLat = oltCoords[0] + ratio * (onuCoords[0] - oltCoords[0]);
             const faultLng = oltCoords[1] + ratio * (onuCoords[1] - oltCoords[1]);
@@ -1623,14 +1685,12 @@
                     }).addTo(map);
                 }
 
-                // Clear previous layers
                 if (oltMarker) map.removeLayer(oltMarker);
                 if (onuMarker) map.removeLayer(onuMarker);
                 if (faultMarker) map.removeLayer(faultMarker);
                 if (faultZoneCircle) map.removeLayer(faultZoneCircle);
                 if (networkLine) map.removeLayer(networkLine);
 
-                // OLT Marker
                 oltMarker = L.marker(oltCoords).addTo(map).bindPopup(`
                     <div class="text-xs">
                         <b class="text-blue-700">المركز / OLT Node</b><br>
@@ -1640,7 +1700,6 @@
 
                 const boundsGroup = [oltCoords];
 
-                // ONU Marker & Route
                 if (onuCoords) {
                     onuMarker = L.marker(onuCoords).addTo(map).bindPopup(`
                         <div class="text-xs">
@@ -1658,7 +1717,6 @@
                     }).addTo(map);
                 }
 
-                // Estimated Fault Location & Uncertainty Radius
                 if (faultDistKm > 0) {
                     boundsGroup.push(faultCoords);
 
@@ -1675,7 +1733,6 @@
                         </div>
                     `);
 
-                    // Uncertainty Radius: 50m default engineering dispersion
                     const uncertaintyMeters = Math.max(50, Math.min(250, faultDistKm * 20));
                     faultZoneCircle = L.circle(faultCoords, {
                         color: '#ef4444',
@@ -1716,7 +1773,6 @@
             const oltCoords = parseCoordinates(document.getElementById('oltCoords').value, [33.6831, 1.0193]);
             const onuCoords = parseCoordinates(document.getElementById('onuCoords').value, [33.7120, 1.0450]);
 
-            // Reveal and Populate Results UI
             document.getElementById('resultSection').classList.remove('hidden');
 
             document.getElementById('reportTimestampDisplay').innerText = new Date().toLocaleString(currentLang === 'ar' ? 'ar-DZ' : 'fr-FR');
@@ -1732,7 +1788,6 @@
             document.getElementById('resAvailableMargin').innerText = `${linkBudget.availableMargin.toFixed(2)} dB`;
             document.getElementById('resOtdrDist').innerText = otdr.isValid ? `${otdr.distanceKm.toFixed(3)} km` : "N/A";
 
-            // Diagnosis Box Elements
             document.getElementById('diagTitle').innerText = diagResult.diagnosis;
             document.getElementById('diagRecommendation').innerText = diagResult.recommendedAction;
             
@@ -1760,7 +1815,6 @@
                 document.getElementById('diagExplanation').innerText = "جميع القياسات الضوئية وهامش الأمان مطابقة للمواصفات المعيارية المعتمدة.";
             }
 
-            // Ground Truth UI
             const gtCard = document.getElementById('groundTruthCard');
             if (groundTruthAnalysis) {
                 gtCard.classList.remove('hidden');
@@ -1773,10 +1827,8 @@
                 gtCard.classList.add('hidden');
             }
 
-            // Update Map
             updateGISMap(oltCoords, onuCoords, otdr.distanceKm, linkBudget.fiberLength);
 
-            // Store Snapshot for PDF & GMAO
             const centerSelect = document.getElementById('atCenter');
             const centerName = centerSelect.options[centerSelect.selectedIndex].text;
 
@@ -1802,7 +1854,6 @@
                 groundTruthAnalysis: groundTruthAnalysis
             };
 
-            // Automatic Sync with GMAO if Firebase is connected
             if (window.saveReportToFirebase && linkBudget.hasMeasuredRx) {
                 window.saveReportToFirebase(reportDataStore);
             }
@@ -1828,7 +1879,6 @@
                     format: 'a4'
                 });
 
-                // Custom Organization Logo if available
                 const customLogo = localStorage.getItem('atOptiLogo_custom');
                 if (customLogo) {
                     try {
@@ -1836,10 +1886,9 @@
                     } catch (e) {}
                 }
 
-                // Official Header
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(16);
-                doc.setTextColor(30, 58, 138); // Blue 900
+                doc.setTextColor(30, 58, 138);
                 doc.text("ALGÉRIE TÉLÉCOM", 15, 20);
 
                 doc.setFontSize(11);
@@ -1851,7 +1900,6 @@
                 doc.setLineWidth(0.5);
                 doc.line(15, 36, 195, 36);
 
-                // Metadata Box
                 doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(30, 41, 59);
@@ -1861,7 +1909,6 @@
                 doc.text(`Technicien Responsable: ${reportDataStore.techName}`, 120, 43);
                 doc.text(`Profil GPON: ${reportDataStore.gponClass} (${reportDataStore.wavelength} nm)`, 120, 49);
 
-                // Section 1: Optical Budget
                 doc.setFillColor(241, 245, 249);
                 doc.rect(15, 54, 180, 7, 'F');
                 doc.setFont("helvetica", "bold");
@@ -1880,7 +1927,6 @@
                 doc.text(`Perte Excédentaire (Excess Loss): ${reportDataStore.excessLoss} dB`, 110, 80);
                 doc.text(`Marge Disponible (Available Margin): ${reportDataStore.availableMargin} dB`, 110, 86);
 
-                // Section 2: Diagnosis & OTDR
                 doc.setFillColor(241, 245, 249);
                 doc.rect(15, 93, 180, 7, 'F');
                 doc.setFont("helvetica", "bold");
@@ -1898,7 +1944,6 @@
                 doc.setFont("helvetica", "normal");
                 doc.text(reportDataStore.recommendedAction, 20, 131, { maxWidth: 170 });
 
-                // Section 3: Ground Truth
                 let yOffset = 143;
                 if (reportDataStore.groundTruthAnalysis) {
                     doc.setFillColor(241, 245, 249);
@@ -1915,7 +1960,6 @@
                     yOffset += 28;
                 }
 
-                // Notes
                 if (reportDataStore.notes) {
                     doc.setFont("helvetica", "bold");
                     doc.text("Observations Terrain:", 15, yOffset);
@@ -1924,7 +1968,6 @@
                     yOffset += 16;
                 }
 
-                // Signatures
                 doc.setDrawColor(203, 213, 225);
                 doc.line(15, yOffset + 10, 195, yOffset + 10);
 
@@ -1937,7 +1980,6 @@
                 doc.text("____________________________", 25, yOffset + 35);
                 doc.text("____________________________", 120, yOffset + 35);
 
-                // Footer
                 doc.setFontSize(8);
                 doc.setTextColor(148, 163, 184);
                 doc.text("Document généré automatiquement par la plateforme AT-GeoFiber Pro - Algérie Télécom", 15, 287);
@@ -1951,61 +1993,6 @@
                 hideLoading();
             }
         };
-    </script>
-
-    <!-- 
-    ============================================================================
-    PRODUCTION FIREBASE SECURITY RULES (Realtime Database & Cloud Storage)
-    ============================================================================
-    Instructions: Copy the rules below and paste them into your Firebase Console.
-
-    1. Firebase Realtime Database Rules:
-    ----------------------------------------------------------------------------
-    {
-      "rules": {
-        "users": {
-          "$uid": {
-            ".read": "auth != null",
-            ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')"
-          }
-        },
-        "gmao_reports_v2": {
-          ".read": "auth != null",
-          ".indexOn": ["status", "severity", "createdAt", "createdByUid"],
-          "$report_id": {
-            // Technicians, Supervisors and Admins can create reports
-            ".write": "auth != null && (!data.exists() || root.child('users').child(auth.uid).child('role').val() === 'supervisor' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-            ".validate": "newData.hasChildren(['diagnosis', 'status', 'createdAt', 'createdByUid']) &&
-                          (newData.child('status').val() === 'NEW' || 
-                           newData.child('status').val() === 'IN PROGRESS' || 
-                           newData.child('status').val() === 'VERIFIED' || 
-                           newData.child('status').val() === 'DONE' || 
-                           newData.child('status').val() === 'REJECTED')"
-          }
-        }
-      }
-    }
-
-    2. Firebase Storage Security Rules:
-    ----------------------------------------------------------------------------
-    rules_version = '2';
-    service firebase.storage {
-      match /b/{bucket}/o {
-        match /field_photos/{userId}/{fileName} {
-          allow read: if request.auth != null;
-          allow write: if request.auth != null 
-                       && request.auth.uid == userId
-                       && request.resource.size < 5 * 1024 * 1024
-                       && request.resource.contentType.matches('image/.*');
-        }
-      }
-    }
-    ============================================================================
-    -->
-    <script>
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js');
-  }
     </script>
 </body>
 </html>
